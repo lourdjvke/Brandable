@@ -111,13 +111,38 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
       source.connect(processor);
       processor.connect(audioContext.destination);
 
+      processor.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0);
+        
+        // Calculate volume level for waveform visualization - ALWAYS RUN for waves
+        let sum = 0;
+        for(let i=0; i<inputData.length; i++) {
+          sum += inputData[i] * inputData[i];
+        }
+        setVoiceLevel(Math.sqrt(sum / inputData.length));
+
+        // Only send audio if session is connected
+        if (liveSessionRef.current) {
+          const pcm16 = new Int16Array(inputData.length);
+          for (let i = 0; i < inputData.length; i++) {
+            pcm16[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
+          }
+          const buffer = new ArrayBuffer(pcm16.length * 2);
+          const view = new DataView(buffer);
+          for (let i = 0; i < pcm16.length; i++) {
+            view.setInt16(i * 2, pcm16[i], true);
+          }
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+          
+          liveSessionRef.current.sendRealtimeInput({
+            audio: { data: base64, mimeType: 'audio/pcm;rate=16000' }
+          });
+        }
+      };
+
       const sessionPromise = (liveAI as any).live.connect({
         model: "gemini-3.1-flash-live-preview",
         config: {
-          generationConfig: {
-            responseModalities: ["AUDIO"],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } }
-          },
           systemInstruction: {
             parts: [{ text: `You are Brandable's AI Copilot. You are in a live voice session.
             Current context: User is in folder path: /${currentPath.join("/")}.
@@ -131,6 +156,8 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
 
             Always provide a clear and concise text transcription of your full response including the commands.` }]
           },
+          responseModalities: ["AUDIO"],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } },
           outputAudioTranscription: {},
           inputAudioTranscription: {}
         },
@@ -199,36 +226,9 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
       
       const session = await sessionPromise;
       liveSessionRef.current = session;
-
-      processor.onaudioprocess = (e) => {
-        const inputData = e.inputBuffer.getChannelData(0);
-        
-        // Calculate volume level for waveform visualization
-        let sum = 0;
-        for(let i=0; i<inputData.length; i++) {
-          sum += inputData[i] * inputData[i];
-        }
-        setVoiceLevel(Math.sqrt(sum / inputData.length));
-
-        const pcm16 = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          pcm16[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
-        }
-        const buffer = new ArrayBuffer(pcm16.length * 2);
-        const view = new DataView(buffer);
-        for (let i = 0; i < pcm16.length; i++) {
-          view.setInt16(i * 2, pcm16[i], true);
-        }
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-        
-        session.sendRealtimeInput({
-          audio: { data: base64, mimeType: 'audio/pcm;rate=16000' }
-        });
-      };
-
-      source.connect(processor);
-      processor.connect(audioContext.destination);
-
+      setIsConnecting(false);
+      setIsActive(true);
+      addNotification({ title: "Voice Assistant Active", message: "Listening...", type: "task" });
     } catch (err: any) {
       console.error("Voice Assistant Connection Error:", err);
       setIsConnecting(false);
@@ -329,7 +329,7 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
                   <motion.div
                     key={i}
                     animate={{ 
-                      height: isActive ? [8, 8 + (voiceLevel * 100 * Math.random()), 8] : [8, 12, 8]
+                      height: (isActive || isConnecting) ? [8, 8 + (voiceLevel * 100 * Math.random()), 8] : [8, 12, 8]
                     }}
                     transition={{ 
                       duration: 0.2 + (Math.random() * 0.2), 
@@ -338,7 +338,7 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
                     }}
                     className={cn(
                       "w-1.5 rounded-full",
-                      isActive ? "bg-white" : "bg-white/20"
+                      (isActive || isConnecting) ? "bg-white" : "bg-white/20"
                     )}
                   />
                 ))}
