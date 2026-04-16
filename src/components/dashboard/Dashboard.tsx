@@ -1,0 +1,377 @@
+import { useState, useEffect, useRef } from "react";
+import { UserProfile, FileItem, FileType } from "@/src/types";
+import Sidebar from "./Sidebar";
+import Workspace from "./Workspace";
+import AICopilot from "./AICopilot";
+import SettingsView from "./SettingsView";
+import VoiceAssistant from "./VoiceAssistant";
+import { NotificationProvider } from "./NotificationSystem";
+import { motion, AnimatePresence } from "motion/react";
+import { MessageSquare, Menu, X, Mic, ChevronUp } from "lucide-react";
+import { cn } from "@/src/lib/utils";
+import { db } from "@/src/lib/firebase";
+import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, arrayUnion, deleteDoc } from "firebase/firestore";
+
+export default function Dashboard({ profile }: { profile: UserProfile }) {
+  return (
+    <NotificationProvider>
+      <DashboardContent profile={profile} />
+    </NotificationProvider>
+  );
+}
+
+function DashboardContent({ profile }: { profile: UserProfile }) {
+  const [activeTab, setActiveTab] = useState<"workspace" | "settings">("workspace");
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(typeof window !== "undefined" ? window.innerWidth >= 768 : true);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const aiCopilotRef = useRef<any>(null);
+  const voiceAssistantRef = useRef<any>(null);
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [showBottomBar, setShowBottomBar] = useState(true);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      if (currentScrollY > lastScrollY.current && currentScrollY > 50) {
+        setShowBottomBar(false);
+      } else {
+        setShowBottomBar(true);
+      }
+      lastScrollY.current = currentScrollY;
+    };
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!profile.uid) return;
+    const q = query(collection(db, "files"), where("ownerId", "==", profile.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fileList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FileItem));
+      setFiles(fileList);
+    });
+    return () => unsubscribe();
+  }, [profile.uid]);
+
+  const toggleVoice = () => {
+    if (voiceAssistantRef.current) {
+      voiceAssistantRef.current.toggle();
+    }
+  };
+
+  const handleCreateFolder = async (name: string) => {
+    try {
+      const newFolder = {
+        name,
+        type: "folder",
+        parentId: currentFolderId,
+        ownerId: profile.uid,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        tags: [],
+        color: "#3b82f6"
+      };
+      const docRef = await addDoc(collection(db, "files"), newFolder);
+      return docRef.id;
+    } catch (err) {
+      console.error("Error creating folder:", err);
+    }
+  };
+
+  const logActionToChat = async (messageContent: string) => {
+    if (!currentSessionId) {
+       console.warn("No active session to log action to.");
+       return;
+    }
+
+    const sessionRef = doc(db, "chatSessions", currentSessionId);
+    const newMessage = {
+      role: "assistant", // Or "system" depending on preferred appearance
+      content: messageContent,
+      createdAt: Date.now(),
+      id: Date.now().toString()
+    };
+
+    await updateDoc(sessionRef, {
+      messages: arrayUnion(newMessage),
+      updatedAt: Date.now()
+    });
+  };
+
+  const handleCreateFile = async (name: string, folderId: string | null, content: string = "", type: FileType = "script") => {
+    try {
+      const newFile = {
+        name,
+        type,
+        parentId: folderId,
+        ownerId: profile.uid,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        tags: [],
+        content
+      };
+      const docRef = await addDoc(collection(db, "files"), newFile);
+      return docRef.id;
+    } catch (err) {
+      console.error("Error creating file:", err);
+    }
+  };
+
+  const handleUpdateFile = async (id: string, updates: Partial<FileItem>) => {
+    try {
+      await updateDoc(doc(db, "files", id), { ...updates, updatedAt: Date.now() });
+    } catch (err) {
+      console.error("Error updating file:", err);
+    }
+  };
+
+  const handleDeleteFile = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "files", id));
+    } catch (err) {
+      console.error("Error deleting file:", err);
+    }
+  };
+
+  const currentPath: string[] = [];
+  let currId = currentFolderId;
+  while (currId) {
+    const folder = files.find(f => f.id === currId);
+    if (folder) {
+      currentPath.unshift(folder.name);
+      currId = folder.parentId;
+    } else break;
+  }
+
+  useEffect(() => {
+    setCurrentFolderId(null);
+    setSelectedFile(null);
+  }, [activeTab]);
+
+  useEffect(() => {
+    const handleResize = () => setIsDesktop(window.innerWidth >= 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const showCopilot = isCopilotOpen || (activeTab === "workspace" && isDesktop && !selectedFile);
+
+  return (
+    <div className="h-full flex bg-[#f8f9fa] relative overflow-y-auto">
+      {/* Desktop Sidebar */}
+      <div className="hidden md:block">
+        <Sidebar 
+          activeTab={activeTab} 
+          setActiveTab={setActiveTab} 
+          isCopilotOpen={showCopilot}
+          onToggleCopilot={() => setIsCopilotOpen(!isCopilotOpen)}
+        />
+      </div>
+
+      {/* Mobile Sidebar Overlay */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsSidebarOpen(false)}
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] md:hidden"
+            />
+            <motion.div
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="fixed inset-y-0 left-0 w-[280px] bg-white z-[70] md:hidden"
+            >
+              <Sidebar 
+                activeTab={activeTab} 
+                setActiveTab={setActiveTab} 
+                onClose={() => setIsSidebarOpen(false)}
+              />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <main className="flex-1 flex flex-col relative overflow-y-auto">
+        {/* Mobile Header */}
+        <header className="md:hidden sticky top-0 flex items-center justify-between px-4 py-3 border-b border-neutral-200 bg-white/80 backdrop-blur-md z-40">
+          <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-neutral-500">
+            <Menu className="w-6 h-6" />
+          </button>
+          <div className="font-bold text-sm truncate max-w-[200px]">Brandable</div>
+          <div className="w-10"></div>
+        </header>
+
+        <AnimatePresence mode="wait">
+          {activeTab === "workspace" ? (
+            <motion.div
+              key="workspace"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              className="h-full"
+            >
+              <Workspace 
+                profile={profile} 
+                currentFolderId={currentFolderId}
+                setCurrentFolderId={setCurrentFolderId}
+                currentPath={currentPath}
+                selectedFile={selectedFile}
+                setSelectedFile={setSelectedFile}
+                searchQuery={searchQuery}
+              />
+            </motion.div>
+          ) : activeTab === "settings" ? (
+            <motion.div
+              key="settings"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              className="h-full"
+            >
+              <SettingsView profile={profile} />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
+        {/* Mobile Bottom Bar */}
+        {!isDesktop && !isCopilotOpen && activeTab === "workspace" && !selectedFile && (
+          <motion.div 
+            initial={{ y: 100 }}
+            animate={{ y: showBottomBar ? 0 : 100 }}
+            className="fixed bottom-4 left-4 right-4 bg-white rounded-lg border border-neutral-200 p-2 flex items-center gap-2 z-50"
+          >
+            <button 
+              onClick={toggleVoice}
+              className={cn(
+                "w-12 h-12 rounded-full flex items-center justify-center transition-all shrink-0 relative overflow-hidden",
+                isVoiceActive 
+                  ? "bg-red-500 text-white" 
+                  : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200"
+              )}
+            >
+              {isVoiceActive && (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="absolute inset-0 z-0"
+                >
+                  <motion.div 
+                    animate={{ 
+                      rotate: [0, 360],
+                      scale: [1, 1.2, 1],
+                    }}
+                    transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                    className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,#3b82f6,#8b5cf6,#ec4899,#3b82f6)] blur-md opacity-60"
+                  />
+                  <motion.div 
+                    animate={{ 
+                      rotate: [360, 0],
+                      scale: [1.2, 1, 1.2],
+                    }}
+                    transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
+                    className="absolute inset-[-100%] bg-[conic-gradient(from_180deg,#10b981,#3b82f6,#8b5cf6,#10b981)] blur-lg opacity-40 mix-blend-overlay"
+                  />
+                </motion.div>
+              )}
+              <Mic className={cn("w-5 h-5 relative z-10")} />
+            </button>
+            <div 
+              className="flex-1 px-2 text-sm font-medium text-neutral-400 cursor-text"
+              onClick={() => setIsCopilotOpen(true)}
+            >
+              What do you want?
+            </div>
+            <button 
+              onClick={() => setIsCopilotOpen(true)} 
+              className="w-10 h-10 flex items-center justify-center text-neutral-400 hover:text-black transition-colors shrink-0"
+            >
+              <ChevronUp className="w-5 h-5" />
+            </button>
+          </motion.div>
+        )}
+      </main>
+
+      {/* Copilot Sidebar (Desktop) & Overlay (Mobile) */}
+      <AnimatePresence>
+        {showCopilot && activeTab !== "settings" && (
+          <>
+            {/* Mobile Overlay Background */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCopilotOpen(false)}
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[80] md:hidden"
+            />
+            
+            <motion.aside
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className={cn(
+                "fixed bottom-0 left-0 right-0 h-[85vh] rounded-t-lg md:relative md:h-full md:w-[380px] md:rounded-none z-[90] md:z-auto",
+                "bg-white border-t md:border-t-0 md:border-l border-neutral-200 overflow-hidden flex flex-col"
+              )}
+            >
+              <div className="md:hidden absolute top-4 right-4 z-[100]">
+                <button onClick={() => setIsCopilotOpen(false)} className="p-2 bg-neutral-100 rounded-full">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <AICopilot 
+                ref={aiCopilotRef}
+                profile={profile} 
+                currentPath={currentPath}
+                currentFolderId={currentFolderId}
+                files={files}
+                onNavigate={(id) => {
+                  setActiveTab("workspace");
+                  setCurrentFolderId(id);
+                  if (window.innerWidth < 768) setIsCopilotOpen(false);
+                }}
+                onOpenSettings={() => setActiveTab("settings")}
+                onCreateFile={handleCreateFile}
+                onUpdateFile={handleUpdateFile}
+                onDeleteFile={handleDeleteFile}
+                onCreateFolder={handleCreateFolder}
+                onSessionChange={setCurrentSessionId}
+              />
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+      {/* Voice Assistant Implementation */}
+      <VoiceAssistant 
+        ref={voiceAssistantRef}
+        files={files}
+        currentPath={currentPath}
+        currentFolderId={currentFolderId}
+        currentSessionId={currentSessionId}
+        onLogAction={logActionToChat}
+        onNavigate={setCurrentFolderId}
+        onFilter={setSearchQuery}
+        onOpenFile={setSelectedFile}
+        onUpdateFile={handleUpdateFile}
+        onDeleteFile={handleDeleteFile}
+        onCreateFolder={handleCreateFolder}
+        onCreateFile={handleCreateFile}
+        onStateChange={setIsVoiceActive}
+      />
+    </div>
+  );
+}

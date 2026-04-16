@@ -1,0 +1,9 @@
+{
+  "name": " Brandable",
+  "description": "The All-in-One contet caption planning system, image analysis, content moderation and caption adaptation",
+  "requestFramePermissions": [
+    "microphone",
+    "notifications",
+    "camera"
+  ]
+}
