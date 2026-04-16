@@ -205,14 +205,14 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
 
       {/* Folders Horizontal Scroll */}
       {folders.length > 0 && (
-        <div className="mt-6 overflow-x-auto whitespace-nowrap px-4 pb-4 snap-x h-[60vh] shrink-0 hide-scrollbar overflow-y-hidden">
+        <div className="mt-6 overflow-x-auto whitespace-nowrap px-4 pb-4 snap-x h-[50vh] shrink-0 hide-scrollbar overflow-y-hidden">
           {folders.map(folder => (
             <motion.div
               key={folder.id}
               initial={{ opacity: 0, x: 20, filter: "blur(10px)" }}
               animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
               transition={{ duration: 0.5 }}
-              className="inline-block h-[60vh] mr-4 last:mr-0"
+              className="inline-block h-[50vh] mr-4 last:mr-0"
             >
               <ContextMenu 
                 items={[
@@ -226,7 +226,7 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
               >
                 <div 
                   onClick={() => setCurrentFolderId(folder.id)}
-                  className="min-w-[15em] w-[15em] h-[60vh] rounded-xl p-4 flex flex-col justify-between snap-center relative overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
+                  className="min-w-[15em] w-[15em] h-[50vh] rounded-xl p-4 flex flex-col justify-between snap-center relative overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
                   style={{ backgroundColor: folder.color || "#e9d5ff" }}
                 >
                   {folder.headerImage && <img src={folder.headerImage} className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay" />}
@@ -249,15 +249,16 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
       <div className="mt-4 px-4 flex flex-col gap-2">
         <h2 className="text-lg font-semibold">Recent Files</h2>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           <AnimatePresence mode="popLayout">
             {recentFiles.map(file => (
               <motion.div
                 key={file.id}
-                initial={{ opacity: 0, y: 10, filter: "blur(5px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                exit={{ opacity: 0, y: -10, filter: "blur(5px)" }}
-                transition={{ duration: 0.3 }}
+                initial={{ opacity: 0.3, scale: 0.85, filter: "blur(10px)" }}
+                whileInView={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                viewport={{ once: false, amount: 0.15, margin: "-10% 0px -10% 0px" }}
+                transition={{ duration: 0.6, ease: "easeOut" }}
+                className="w-full origin-center"
               >
                 <FileNotificationCard 
                   file={file} 
