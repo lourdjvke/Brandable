@@ -142,7 +142,7 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
         <div className="relative">
           <button 
             onClick={() => setShowCreateMenu(!showCreateMenu)}
-            className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-md text-sm font-medium text-blue-600 hover:bg-blue-100 transition-colors"
+            className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-xl text-sm font-medium text-blue-600 hover:bg-blue-100 transition-colors"
           >
             <Plus className="w-4 h-4" /> Add file
           </button>
@@ -167,9 +167,9 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
                       setCreateModalState({ isOpen: true, type: item.type as FileType });
                       setShowCreateMenu(false);
                     }}
-                    className="w-full flex items-center gap-3 px-2 py-1.5 hover:bg-neutral-100 rounded-sm text-sm transition-colors"
+                    className="w-full flex items-center gap-3 px-2 py-1.5 hover:bg-neutral-100 rounded-lg text-sm transition-colors"
                   >
-                    <div className="w-6 h-6 rounded-sm bg-neutral-100 flex items-center justify-center">
+                    <div className="w-6 h-6 rounded-lg bg-neutral-100 flex items-center justify-center">
                       {item.icon}
                     </div>
                     <span className="font-medium">{item.label}</span>
@@ -183,13 +183,21 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
 
       {/* Greeting & Breadcrumbs */}
       <div className="px-4 flex flex-col gap-1 mt-2">
-        <p className="text-sm text-neutral-500 font-medium">{getGreeting()}</p>
-        <div className="flex items-center gap-1 text-2xl font-semibold tracking-tight">
-          <button onClick={() => setCurrentFolderId(null)} className="hover:text-blue-600">Home</button>
-          {currentPath.map((path, i) => (
-            <div key={i} className="flex items-center gap-1">
-              <ChevronRight className="w-5 h-5 text-neutral-400" />
-              <button className="hover:text-blue-600">{path}</button>
+        <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider">{getGreeting()}</p>
+        <div className="flex items-center gap-1 text-sm font-semibold tracking-tight overflow-hidden">
+          <button onClick={() => setCurrentFolderId(null)} className="hover:text-blue-600 shrink-0">Home</button>
+          
+          {currentPath.length > 2 && (
+            <div className="flex items-center gap-1 shrink-0">
+               <ChevronRight className="w-4 h-4 text-neutral-400" />
+               <span className="text-neutral-400">...</span>
+            </div>
+          )}
+
+          {currentPath.slice(-2).map((path, i) => (
+            <div key={i} className="flex items-center gap-1 overflow-hidden">
+              <ChevronRight className="w-4 h-4 text-neutral-400 shrink-0" />
+              <button className="hover:text-blue-600 truncate max-w-[120px]">{path}</button>
             </div>
           ))}
         </div>
@@ -218,7 +226,7 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
               >
                 <div 
                   onClick={() => setCurrentFolderId(folder.id)}
-                  className="min-w-[15em] w-[15em] h-[60vh] rounded-md p-4 flex flex-col justify-between snap-center relative overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
+                  className="min-w-[15em] w-[15em] h-[60vh] rounded-xl p-4 flex flex-col justify-between snap-center relative overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
                   style={{ backgroundColor: folder.color || "#e9d5ff" }}
                 >
                   {folder.headerImage && <img src={folder.headerImage} className="absolute inset-0 w-full h-full object-cover opacity-40 mix-blend-overlay" />}
@@ -355,21 +363,36 @@ function FileNotificationCard({ file, onClick, onDelete }: { file: FileItem; onC
   return (
     <motion.div 
       layout
-      className="bg-white rounded-md p-3 border border-neutral-200 flex flex-col gap-2"
+      className="bg-white rounded-2xl p-3 border border-neutral-200 flex flex-col gap-2"
     >
-      <div className="flex items-start gap-3 cursor-pointer" onClick={() => setExpanded(!expanded)}>
-        <div className={cn("w-10 h-10 rounded-sm flex items-center justify-center text-white shrink-0", getBgColor())}>
-          {getIcon()}
-        </div>
-        <div className="flex-1 flex flex-col pt-0.5">
-          <div className="flex justify-between items-center">
-            <h3 className="font-semibold text-sm">{file.name}</h3>
-            <span className="text-xs text-neutral-400 font-medium">{timeAgo(file.updatedAt)}</span>
+      <div className="flex items-start gap-3 relative group/card">
+        <div 
+          className="flex flex-1 items-start gap-3 cursor-pointer" 
+          onClick={() => setExpanded(!expanded)}
+        >
+          <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0", getBgColor())}>
+            {getIcon()}
           </div>
-          <p className="text-xs text-neutral-500 mt-0.5 line-clamp-1 font-medium">
-            {file.content?.replace(/[#*`]/g, '') || "Empty file..."}
-          </p>
+          <div className="flex-1 flex flex-col pt-0.5">
+            <div className="flex justify-between items-center">
+              <h3 className="font-semibold text-sm">{file.name}</h3>
+              <span className="text-xs text-neutral-400 font-medium">{timeAgo(file.updatedAt)}</span>
+            </div>
+            <p className="text-xs text-neutral-500 mt-0.5 line-clamp-1 font-medium">
+              {file.content?.replace(/[#*`]/g, '') || "Empty file..."}
+            </p>
+          </div>
         </div>
+
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          className="absolute -top-1 -right-1 p-1.5 bg-neutral-100 border border-neutral-200 text-neutral-400 hover:text-red-500 hover:bg-neutral-50 rounded-full opacity-0 group-hover/card:opacity-100 transition-all shadow-sm z-10"
+        >
+          <Trash2 className="w-3 h-3" />
+        </button>
       </div>
       
       <AnimatePresence>

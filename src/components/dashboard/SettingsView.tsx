@@ -10,7 +10,9 @@ import { cn } from "@/src/lib/utils";
 export default function SettingsView({ profile }: { profile: UserProfile }) {
   const [name, setName] = useState(profile.name || "");
   const [photoURL, setPhotoURL] = useState(profile.photoURL || "");
-  const [apiKey, setApiKey] = useState(localStorage.getItem("gemini_api_key") || (import.meta as any).env.VITE_GEMINI_API_KEY || "");
+  const [apiKey, setApiKey] = useState(localStorage.getItem("gemini_api_key") || "");
+  const envKey = process.env.GEMINI_API_KEY;
+  const currentKey = apiKey || envKey;
   const [randomModel, setRandomModel] = useState(localStorage.getItem("gemini_random_model") === "true");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -108,7 +110,7 @@ export default function SettingsView({ profile }: { profile: UserProfile }) {
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 className="w-full px-3 py-2 bg-neutral-50 rounded-xl text-sm outline-none focus:ring-1 focus:ring-black transition-all font-mono"
-                placeholder="AIzaSy..."
+                placeholder={envKey ? "Using system key (AI Studio managed)" : "AIzaSy..."}
               />
               <p className="text-[10px] text-neutral-400">Stored locally in your browser.</p>
             </div>

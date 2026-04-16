@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { MessageSquare, Menu, X, Mic, ChevronUp } from "lucide-react";
 import { cn } from "@/src/lib/utils";
 import { db } from "@/src/lib/firebase";
-import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, arrayUnion, deleteDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, arrayUnion, deleteDoc, getDocs, orderBy, limit } from "firebase/firestore";
 
 export default function Dashboard({ profile }: { profile: UserProfile }) {
   return (
@@ -85,18 +85,42 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
     }
   };
 
-  const logActionToChat = async (messageContent: string) => {
-    if (!currentSessionId) {
-       console.warn("No active session to log action to.");
-       return;
+  const logActionToChat = async (messageContent: string, isSilent: boolean = false) => {
+    let sessionId = currentSessionId;
+    
+    if (!sessionId) {
+      // If no session in state, check for existing sessions first
+      const q = query(
+        collection(db, "chatSessions"), 
+        where("ownerId", "==", profile.uid), 
+        orderBy("updatedAt", "desc"), 
+        limit(1)
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        sessionId = snap.docs[0].id;
+        setCurrentSessionId(sessionId);
+      } else {
+        // Create a new session if none exists at all
+        const newDoc = await addDoc(collection(db, "chatSessions"), {
+          ownerId: profile.uid,
+          title: "Voice Brainstorming",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          messages: []
+        });
+        sessionId = newDoc.id;
+        setCurrentSessionId(sessionId);
+      }
     }
 
-    const sessionRef = doc(db, "chatSessions", currentSessionId);
+    const sessionRef = doc(db, "chatSessions", sessionId);
     const newMessage = {
-      role: "assistant", // Or "system" depending on preferred appearance
+      role: "assistant",
       content: messageContent,
       createdAt: Date.now(),
-      id: Date.now().toString()
+      id: Date.now().toString(),
+      isSilent
     };
 
     await updateDoc(sessionRef, {
@@ -307,7 +331,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
 
       {/* Copilot Sidebar (Desktop) & Overlay (Mobile) */}
       <AnimatePresence>
-        {showCopilot && activeTab !== "settings" && (
+        {isCopilotOpen && activeTab !== "settings" && (
           <>
             {/* Mobile Overlay Background */}
             <motion.div
@@ -317,44 +341,42 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
               onClick={() => setIsCopilotOpen(false)}
               className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[80] md:hidden"
             />
-            
-            <motion.aside
-              initial={{ y: "100%", opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: "100%", opacity: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className={cn(
-                "fixed bottom-0 left-0 right-0 h-[85vh] rounded-t-lg md:relative md:h-full md:w-[380px] md:rounded-none z-[90] md:z-auto",
-                "bg-white border-t md:border-t-0 md:border-l border-neutral-200 overflow-hidden flex flex-col"
-              )}
-            >
-              <div className="md:hidden absolute top-4 right-4 z-[100]">
-                <button onClick={() => setIsCopilotOpen(false)} className="p-2 bg-neutral-100 rounded-full">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <AICopilot 
-                ref={aiCopilotRef}
-                profile={profile} 
-                currentPath={currentPath}
-                currentFolderId={currentFolderId}
-                files={files}
-                onNavigate={(id) => {
-                  setActiveTab("workspace");
-                  setCurrentFolderId(id);
-                  if (window.innerWidth < 768) setIsCopilotOpen(false);
-                }}
-                onOpenSettings={() => setActiveTab("settings")}
-                onCreateFile={handleCreateFile}
-                onUpdateFile={handleUpdateFile}
-                onDeleteFile={handleDeleteFile}
-                onCreateFolder={handleCreateFolder}
-                onSessionChange={setCurrentSessionId}
-              />
-            </motion.aside>
           </>
         )}
       </AnimatePresence>
+
+      <div 
+        className={cn(
+          "fixed bottom-0 left-0 right-0 h-[85vh] rounded-t-lg md:relative md:h-full md:w-[380px] md:rounded-none z-[90] md:z-auto transition-transform duration-300",
+          !showCopilot && "translate-y-full md:translate-y-0 md:hidden",
+          activeTab === "settings" && "hidden md:hidden",
+          "bg-white border-t md:border-t-0 md:border-l border-neutral-200 overflow-hidden flex flex-col"
+        )}
+      >
+        <div className="md:hidden absolute top-4 right-4 z-[100]">
+          <button onClick={() => setIsCopilotOpen(false)} className="p-2 bg-neutral-100 rounded-full">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <AICopilot 
+          ref={aiCopilotRef}
+          profile={profile} 
+          currentPath={currentPath}
+          currentFolderId={currentFolderId}
+          files={files}
+          onNavigate={(id) => {
+            setActiveTab("workspace");
+            setCurrentFolderId(id);
+            if (window.innerWidth < 768) setIsCopilotOpen(false);
+          }}
+          onOpenSettings={() => setActiveTab("settings")}
+          onCreateFile={handleCreateFile}
+          onUpdateFile={handleUpdateFile}
+          onDeleteFile={handleDeleteFile}
+          onCreateFolder={handleCreateFolder}
+          onSessionChange={setCurrentSessionId}
+        />
+      </div>
       {/* Voice Assistant Implementation */}
       <VoiceAssistant 
         ref={voiceAssistantRef}

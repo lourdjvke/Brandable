@@ -17,7 +17,7 @@ interface VoiceAssistantProps {
   onCreateFile: (name: string, folderId: string | null, content?: string) => Promise<string | void>;
   currentFolderId: string | null;
   currentSessionId: string | null;
-  onLogAction: (msg: string) => Promise<void>;
+  onLogAction: (msg: string, isSilent?: boolean) => Promise<void>;
   onStateChange?: (isActive: boolean) => void;
 }
 
@@ -39,6 +39,7 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
   const [isActive, setIsActive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [voiceLevel, setVoiceLevel] = useState(0);
+  const [lastLiveResponse, setLastLiveResponse] = useState<string>("");
 
   useEffect(() => {
     onStateChange?.(isActive);
@@ -62,7 +63,7 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
     isActive
   }));
 
-  const apiKey = localStorage.getItem("custom_gemini_api_key") || process.env.GEMINI_API_KEY;
+  const apiKey = localStorage.getItem("gemini_api_key") || process.env.GEMINI_API_KEY;
 
   const startSession = async () => {
     if (isConnecting) return;
@@ -83,58 +84,28 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
       playbackContextRef.current = playbackContext;
       nextPlayTimeRef.current = playbackContext.currentTime;
 
-      // Tools definition
-      const tools = [
-        {
-          functionDeclarations: [
-            {
-              name: "read_file",
-              description: "Reads the content of a specific file by name so you can discuss it with the user.",
-              parameters: {
-                type: "object",
-                properties: {
-                  name: { type: "string", description: "The name of the file to read." }
-                },
-                required: ["name"]
-              }
-            },
-            {
-              name: "create_file",
-              description: "Creates a new file in the current workspace.",
-              parameters: {
-                type: "object",
-                properties: {
-                  name: { type: "string", description: "The name of the new file to create." }
-                },
-                required: ["name"]
-              }
-            }
-          ]
-        }
-      ];
-
       const sessionPromise = (liveAI as any).live.connect({
         model: "gemini-3.1-flash-live-preview",
         config: {
           generationConfig: {
             responseModalities: ["AUDIO"],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } } }
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } }
           },
           systemInstruction: {
-            parts: [{ text: `You are Brandable Voice OS, an intelligent hands-free brainstorming assistant. 
+            parts: [{ text: `You are Brandable's AI Copilot. You are in a live voice session.
             Current context: User is in folder path: /${currentPath.join("/")}.
             Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
-            
+
             Available commands:
-            - Create file: command: create_file --name=filename.txt --folder=folderNameOrId --content="initial content"
+            - Create file: command: create_file --name=filename.txt --folder=folderNameOrId --content="content"
             - Create folder: command: create_folder --name=folderName --parent=parentNameOrId
-            - Update file: command: update_file --id=fileId --content="new content"
+            - Update file: command: update_file --id=fileId --content="content"
             - Delete item: command: delete_item --id=itemId
 
-            When a user asks to capture an idea or manage files, include the relevant command in your text output.
-            Be engaging, helpful, and concise.` }]
+            Always provide a clear and concise text transcription of your full response including the commands.` }]
           },
-          tools: tools as any
+          outputAudioTranscription: {},
+          inputAudioTranscription: {}
         },
         callbacks: {
           onopen: () => {
@@ -143,6 +114,7 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
             addNotification({ title: "Voice Assistant Active", message: "Listening...", type: "task" });
           },
           onmessage: async (message: any) => {
+            // Check for audio output
             if (message.serverContent?.modelTurn?.parts) {
                 for (const part of message.serverContent.modelTurn.parts) {
                     if (part.inlineData && part.inlineData.data) {
@@ -151,19 +123,21 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
                     if (part.text) {
                         currentAiTextRef.current += part.text;
                     }
-                    if (part.executableCode || part.functionCall) {
-                        handleFunctionCall(part.functionCall || part.executableCode);
-
-                        // When function call is made, clear text accumulator
-                        currentAiTextRef.current = "";
-                    }
                 }
             }
-            // Check for completed turn to parse for commands and log to chat
+
+            // Also capture server-transcribed text
+            if (message.serverContent?.outputAudioTranscription?.text) {
+                currentAiTextRef.current += message.serverContent.outputAudioTranscription.text;
+            }
+
+            // Check for completed turn
             if (message.serverContent?.turnComplete) {
                 const text = currentAiTextRef.current.trim();
                 if (text) {
-                    onLogAction(text);
+                    // Log to chat with isSilent=true so it triggers command execution in AICopilot but stays hidden in UI
+                    onLogAction(text, true);
+                    setLastLiveResponse(text);
                 }
                 currentAiTextRef.current = "";
             }
@@ -181,6 +155,14 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
 
       processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
+        
+        // Calculate volume level for waveform visualization
+        let sum = 0;
+        for(let i=0; i<inputData.length; i++) {
+          sum += inputData[i] * inputData[i];
+        }
+        setVoiceLevel(Math.sqrt(sum / inputData.length));
+
         const pcm16 = new Int16Array(inputData.length);
         for (let i = 0; i < inputData.length; i++) {
           pcm16[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
@@ -228,77 +210,6 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
     const startTime = Math.max(playbackContextRef.current.currentTime, nextPlayTimeRef.current);
     source.start(startTime);
     nextPlayTimeRef.current = startTime + buffer.duration;
-  };
-
-  const handleFunctionCall = async (call: any) => {
-    const { name, args, id } = call;
-    
-    // 1. Immediately provide verbal feedback to the user
-    // The Gemini Live API session can send text-only turns to provide verbal responses.
-    // However, to keep it simple and within the current tool response loop,
-    // we use notifications. The assistant will also naturally respond via audio.
-    
-    // 2. Trigger notification
-    addNotification({
-        title: "AI handling task",
-        message: `I am triggering ${name.replace('_', ' ')} action now.`,
-        type: "task"
-    });
-
-    try {
-        let result = { success: true, message: "" };
-        
-        switch (name) {
-            case "read_file": {
-                const file = files.find(f => f.type !== 'folder' && f.name.toLowerCase().includes(args.name.toLowerCase()));
-                if (file) {
-                    result.message = `File Content for ${file.name}: ${file.content || "Empty file"}`;
-                } else {
-                    result.success = false;
-                    result.message = `Could not find file named ${args.name}`;
-                }
-                break;
-            }
-            case "create_file": {
-                await onCreateFile(args.name, currentFolderId);
-                result.message = `Created file ${args.name}`;
-                if (currentSessionId) {
-                    await onLogAction(`I have created the file "${args.name}" for you.`);
-                }
-                break;
-            }
-        }
-
-        addNotification({
-            title: result.success ? "Action Successful" : "Action Failed",
-            message: result.message,
-            type: result.success ? "success" : "error"
-        });
-
-        liveSessionRef.current?.sendToolResponse({
-            functionResponses: [{
-                name,
-                response: result,
-                id
-            }]
-        });
-
-    } catch (err) {
-        console.error("Function call error:", err);
-        addNotification({
-            title: "Action Failed",
-            message: "An error occurred while performing the action.",
-            type: "error"
-        });
-        
-        liveSessionRef.current?.sendToolResponse({
-            functionResponses: [{
-                name,
-                response: { success: false, message: "Internal error" },
-                id
-            }]
-        });
-    }
   };
 
   const stopSession = () => {
@@ -375,13 +286,29 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
                 ))}
               </div>
 
-              <div className="text-center">
-                <h3 className="text-white font-bold text-lg">
-                  {isConnecting ? "Connecting..." : "Listening..."}
-                </h3>
-                <p className="text-white/40 text-xs mt-1">
-                  Ask me to open folders or brainstorm ideas.
-                </p>
+              <div className="text-center px-4 w-full">
+                <AnimatePresence mode="wait">
+                  {lastLiveResponse && isActive ? (
+                    <motion.p 
+                      key="response"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="text-white text-xs leading-relaxed font-bold line-clamp-3 bg-white/10 p-4 rounded-2xl border border-white/10"
+                    >
+                      "{lastLiveResponse}"
+                    </motion.p>
+                  ) : (
+                    <motion.div key="status" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                      <h3 className="text-white font-bold text-lg">
+                        {isConnecting ? "Connecting..." : "Listening..."}
+                      </h3>
+                      <p className="text-white/40 text-xs mt-1 font-medium italic">
+                        "Create a script for..."
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               <div className="flex items-center gap-4 mt-2">

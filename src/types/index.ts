@@ -42,6 +42,7 @@ export interface ChatMessage {
   content: string;
   imageUrls?: string[];
   createdAt: number;
+  isSilent?: boolean;
 }
 
 export interface ChatSession {

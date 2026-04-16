@@ -110,7 +110,16 @@ function MessageBubble({ msg, viewingImage, setViewingImage }: { msg: ChatMessag
             ))}
           </div>
         )}
-        <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-neutral-800 prose-pre:text-white">
+        <div className={cn(
+          "prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-neutral-800 prose-pre:text-white",
+          msg.isSilent && "opacity-70 italic"
+        )}>
+          {msg.isSilent && (
+            <div className="flex items-center gap-1.5 mb-1 text-[10px] uppercase tracking-wider font-bold text-neutral-400 not-italic">
+              <Mic className="w-3 h-3" />
+              Voice Action
+            </div>
+          )}
           {msg.role === 'assistant' ? renderContent(msg.content) : (
             <ReactMarkdown>{msg.content}</ReactMarkdown>
           )}
@@ -283,9 +292,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   const nextPlayTimeRef = useRef<number>(0);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
 
-  const useCustomApi = localStorage.getItem("use_custom_api") === "true";
-  const customApiKey = localStorage.getItem("custom_gemini_api_key") || "";
-  const apiKey = useCustomApi && customApiKey ? customApiKey : process.env.GEMINI_API_KEY;
+  const apiKey = localStorage.getItem("gemini_api_key") || process.env.GEMINI_API_KEY;
 
   const genAI = useMemo(() => {
     if (!apiKey) return null;
