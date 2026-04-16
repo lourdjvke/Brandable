@@ -19,6 +19,7 @@ interface VoiceAssistantProps {
   currentSessionId: string | null;
   onLogAction: (msg: string, isSilent?: boolean, role?: 'user' | 'assistant' | 'system') => Promise<void>;
   onStateChange?: (isActive: boolean) => void;
+  apiKey: string;
 }
 
 export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({ 
@@ -33,6 +34,7 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
   onCreateFile, 
   currentFolderId, 
   currentSessionId, 
+  apiKey: propApiKey,
   onLogAction, 
   onStateChange
 }: VoiceAssistantProps, ref) {
@@ -40,6 +42,7 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
   const [isConnecting, setIsConnecting] = useState(false);
   const [voiceLevel, setVoiceLevel] = useState(0);
   const [lastLiveResponse, setLastLiveResponse] = useState<string>("");
+  const [sessionError, setSessionError] = useState<string | null>(null);
 
   useEffect(() => {
     onStateChange?.(isActive);
@@ -64,18 +67,34 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
     isActive
   }));
 
-  const apiKey = localStorage.getItem("gemini_api_key") || process.env.GEMINI_API_KEY;
+  const getApiKey = () => {
+    if (propApiKey && propApiKey.trim().length > 0) return propApiKey;
+    return process.env.GEMINI_API_KEY;
+  };
 
   const startSession = async () => {
     if (isConnecting) return;
     setIsConnecting(true);
 
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      setIsConnecting(false);
+      addNotification({ title: "API Key Missing", message: "Please set your Gemini API key in Settings.", type: "error" });
+      return;
+    }
+
     try {
+      setSessionError(null);
       const liveAI = new LiveGenAI({ apiKey } as any);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       audioContextRef.current = audioContext;
+      
+      // Ensure context is running - critical for waves/audio activity
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
       
       const source = audioContext.createMediaStreamSource(stream);
       const processor = audioContext.createScriptProcessor(4096, 1, 1);
@@ -83,7 +102,14 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
 
       const playbackContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       playbackContextRef.current = playbackContext;
+      if (playbackContext.state === 'suspended') {
+        await playbackContext.resume();
+      }
       nextPlayTimeRef.current = playbackContext.currentTime;
+
+      // Connect audio chain early to ensure waves show up even before AI connects
+      source.connect(processor);
+      processor.connect(audioContext.destination);
 
       const sessionPromise = (liveAI as any).live.connect({
         model: "gemini-3.1-flash-live-preview",
@@ -115,6 +141,11 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
             addNotification({ title: "Voice Assistant Active", message: "Listening...", type: "task" });
           },
           onmessage: async (message: any) => {
+            if (message.serverContent?.interrupted) {
+                // Clear any pending audio if user interrupts
+                nextPlayTimeRef.current = playbackContextRef.current?.currentTime || 0;
+            }
+
             // Check for audio output
             if (message.serverContent?.modelTurn?.parts) {
                 for (const part of message.serverContent.modelTurn.parts) {
@@ -154,7 +185,14 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
           onclose: () => stopSession(),
           onerror: (err: any) => {
             console.error("Live session error:", err);
-            stopSession();
+            const errorMsg = err.message || "Connection failed. Please check your API key and quota.";
+            setSessionError(errorMsg);
+            addNotification({ 
+              title: "Voice Assistant Error", 
+              message: errorMsg, 
+              type: "error" 
+            });
+            stopSession(false); // don't notify "offline" if we just notified error
           }
         }
       });
@@ -191,10 +229,12 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
       source.connect(processor);
       processor.connect(audioContext.destination);
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Voice Assistant Connection Error:", err);
       setIsConnecting(false);
-      addNotification({ title: "Connection Failed", message: "Unable to start voice assistant.", type: "error" });
+      const errorMsg = err.message || "Unable to start voice assistant. Check microphone permissions.";
+      setSessionError(errorMsg);
+      addNotification({ title: "Connection Failed", message: errorMsg, type: "error" });
     }
   };
 
@@ -221,29 +261,38 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
     nextPlayTimeRef.current = startTime + buffer.duration;
   };
 
-  const stopSession = () => {
+  const stopSession = (notify = true) => {
     if (liveSessionRef.current) liveSessionRef.current.close();
-    if (audioContextRef.current) audioContextRef.current.close();
-    if (playbackContextRef.current) playbackContextRef.current.close();
+    if (processorRef.current) processorRef.current.disconnect();
+    
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close().catch(console.error);
+    }
+    if (playbackContextRef.current && playbackContextRef.current.state !== 'closed') {
+      playbackContextRef.current.close().catch(console.error);
+    }
     
     liveSessionRef.current = null;
     audioContextRef.current = null;
     playbackContextRef.current = null;
+    processorRef.current = null;
     
     setIsActive(false);
     setIsConnecting(false);
     setVoiceLevel(0);
 
-    addNotification({
-      title: "Assistant Offline",
-      message: "Voice assistant session ended.",
-      type: "info"
-    });
+    if (notify) {
+      addNotification({
+        title: "Assistant Offline",
+        message: "Voice assistant session ended.",
+        type: "info"
+      });
+    }
   };
 
   return (
     <AnimatePresence>
-      {(isActive || isConnecting) && (
+      {(isActive || isConnecting || sessionError) && (
         <motion.div
           initial={{ opacity: 0, scale: 0.9, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -269,7 +318,7 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
                     Connected to Copilot
                   </span>
                 </div>
-                <button onClick={stopSession} className="p-1 hover:bg-white/10 rounded-full text-white/50 hover:text-white transition-colors">
+                <button onClick={() => stopSession()} className="p-1 hover:bg-white/10 rounded-full text-white/50 hover:text-white transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -297,7 +346,23 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
 
               <div className="text-center px-4 w-full">
                 <AnimatePresence mode="wait">
-                  {lastLiveResponse && isActive ? (
+                  {sessionError ? (
+                    <motion.div 
+                      key="error"
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="bg-red-500/20 border border-red-500/50 p-4 rounded-2xl text-red-500 text-[10px] font-bold"
+                    >
+                      <p className="mb-2">ERROR</p>
+                      <p className="text-white/80 font-medium leading-tight">{sessionError}</p>
+                      <button 
+                        onClick={() => { setSessionError(null); startSession(); }}
+                        className="mt-3 px-4 py-1.5 bg-red-500 text-white rounded-full text-[10px] hover:bg-red-600 transition-colors"
+                      >
+                        Try Again
+                      </button>
+                    </motion.div>
+                  ) : lastLiveResponse && isActive ? (
                     <motion.p 
                       key="response"
                       initial={{ opacity: 0, y: 10 }}
@@ -322,7 +387,7 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
 
               <div className="flex items-center gap-4 mt-2">
                 <button 
-                  onClick={stopSession}
+                  onClick={() => stopSession()}
                   className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-red-500 transition-all group"
                 >
                   {isConnecting ? <Loader2 className="w-6 h-6 animate-spin" /> : <Square className="w-5 h-5" />}

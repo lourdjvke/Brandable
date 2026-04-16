@@ -17,6 +17,7 @@ interface AICopilotProps {
   onNavigate: (folderId: string | null) => void;
   onOpenSettings: () => void;
   sessionId: string | null;
+  apiKey: string;
   onSessionChange: (id: string | null) => void;
   onCreateFile: (name: string, folderId: string | null, content?: string, type?: FileType) => Promise<string | undefined>;
   onUpdateFile: (id: string, updates: Partial<FileItem>) => Promise<void>;
@@ -138,6 +139,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   onNavigate, 
   onOpenSettings, 
   sessionId: propSessionId,
+  apiKey: propApiKey,
   onCreateFile, 
   onUpdateFile,
   onDeleteFile,
@@ -297,27 +299,32 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   const nextPlayTimeRef = useRef<number>(0);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
 
-  const apiKey = localStorage.getItem("gemini_api_key") || process.env.GEMINI_API_KEY;
+  const getApiKey = () => {
+    if (propApiKey && propApiKey.trim().length > 0) return propApiKey;
+    return process.env.GEMINI_API_KEY;
+  };
 
   const genAI = useMemo(() => {
-    if (!apiKey) return null;
+    const key = getApiKey();
+    if (!key) return null;
     try {
-      return new GoogleGenerativeAI(apiKey);
+      return new GoogleGenerativeAI(key);
     } catch (e) {
       console.error("GenAI Init Error:", e);
       return null;
     }
-  }, [apiKey]);
+  }, [propApiKey, sessions]);
 
   const liveAI = useMemo(() => {
-    if (!apiKey) return null;
+    const key = getApiKey();
+    if (!key) return null;
     try {
-      return new LiveGenAI({ apiKey } as any);
+      return new LiveGenAI({ apiKey: key } as any);
     } catch (e) {
       console.error("LiveAI Init Error:", e);
       return null;
     }
-  }, [apiKey]);
+  }, [propApiKey, sessions]);
 
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId;

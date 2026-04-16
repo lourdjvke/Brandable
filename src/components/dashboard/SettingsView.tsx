@@ -7,7 +7,7 @@ import { User, LogOut, Key, BrainCircuit, Save, Loader2, Shuffle } from "lucide-
 import { motion } from "motion/react";
 import { cn } from "@/src/lib/utils";
 
-export default function SettingsView({ profile }: { profile: UserProfile }) {
+export default function SettingsView({ profile, onKeyChange }: { profile: UserProfile; onKeyChange: (key: string) => void }) {
   const [name, setName] = useState(profile.name || "");
   const [photoURL, setPhotoURL] = useState(profile.photoURL || "");
   const [apiKey, setApiKey] = useState(localStorage.getItem("gemini_api_key") || "");
@@ -28,8 +28,10 @@ export default function SettingsView({ profile }: { profile: UserProfile }) {
       
       if (apiKey) {
         localStorage.setItem("gemini_api_key", apiKey);
+        onKeyChange(apiKey);
       } else {
         localStorage.removeItem("gemini_api_key");
+        onKeyChange("");
       }
 
       localStorage.setItem("gemini_random_model", randomModel.toString());

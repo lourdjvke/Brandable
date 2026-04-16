@@ -28,6 +28,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const currentSessionIdRef = useRef<string | null>(null);
+  const [geminiKey, setGeminiKey] = useState<string>(() => localStorage.getItem("gemini_api_key") || "");
 
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId;
@@ -273,7 +274,10 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
               transition={{ type: "spring", stiffness: 300, damping: 25 }}
               className="h-full"
             >
-              <SettingsView profile={profile} />
+              <SettingsView 
+              profile={profile} 
+              onKeyChange={setGeminiKey}
+            />
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -372,6 +376,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
           currentFolderId={currentFolderId}
           files={files}
           sessionId={currentSessionId}
+          apiKey={geminiKey}
           onNavigate={(id) => {
             setActiveTab("workspace");
             setCurrentFolderId(id);
@@ -392,6 +397,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
         currentPath={currentPath}
         currentFolderId={currentFolderId}
         currentSessionId={currentSessionId}
+        apiKey={geminiKey}
         onLogAction={logActionToChat}
         onNavigate={setCurrentFolderId}
         onFilter={setSearchQuery}
