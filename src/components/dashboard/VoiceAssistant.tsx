@@ -112,7 +112,7 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
       processor.connect(audioContext.destination);
 
       const sessionPromise = (liveAI as any).live.connect({
-        model: "gemini-3.1-flash-live-preview",
+        model: "gemini-3-flash-live",
         config: {
           generationConfig: {
             responseModalities: ["AUDIO"],
