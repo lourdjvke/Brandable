@@ -661,7 +661,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       let currentAiText = "";
 
       const sessionPromise = (liveAI as any).live.connect({
-        model: "gemini-3-flash-live",
+        model: "gemini-3.1-flash-live-preview",
         config: {
           systemInstruction: {
             parts: [{ text: `You are Brandable's AI Copilot. You are in a live voice session.
