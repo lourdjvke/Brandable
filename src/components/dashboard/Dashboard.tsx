@@ -27,6 +27,11 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   const [isDesktop, setIsDesktop] = useState(typeof window !== "undefined" ? window.innerWidth >= 768 : true);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const currentSessionIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    currentSessionIdRef.current = currentSessionId;
+  }, [currentSessionId]);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -85,8 +90,8 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
     }
   };
 
-  const logActionToChat = async (messageContent: string, isSilent: boolean = false) => {
-    let sessionId = currentSessionId;
+  const logActionToChat = async (messageContent: string, isSilent: boolean = false, role: 'user' | 'assistant' | 'system' = 'assistant') => {
+    let sessionId = currentSessionIdRef.current;
     
     if (!sessionId) {
       // If no session in state, check for existing sessions first
@@ -99,6 +104,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
       const snap = await getDocs(q);
       if (!snap.empty) {
         sessionId = snap.docs[0].id;
+        currentSessionIdRef.current = sessionId;
         setCurrentSessionId(sessionId);
       } else {
         // Create a new session if none exists at all
@@ -110,13 +116,14 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
           messages: []
         });
         sessionId = newDoc.id;
+        currentSessionIdRef.current = sessionId;
         setCurrentSessionId(sessionId);
       }
     }
 
     const sessionRef = doc(db, "chatSessions", sessionId);
     const newMessage = {
-      role: "assistant",
+      role,
       content: messageContent,
       createdAt: Date.now(),
       id: Date.now().toString(),
@@ -364,6 +371,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
           currentPath={currentPath}
           currentFolderId={currentFolderId}
           files={files}
+          sessionId={currentSessionId}
           onNavigate={(id) => {
             setActiveTab("workspace");
             setCurrentFolderId(id);

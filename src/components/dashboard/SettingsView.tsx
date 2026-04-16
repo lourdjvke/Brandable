@@ -112,7 +112,10 @@ export default function SettingsView({ profile }: { profile: UserProfile }) {
                 className="w-full px-3 py-2 bg-neutral-50 rounded-xl text-sm outline-none focus:ring-1 focus:ring-black transition-all font-mono"
                 placeholder={envKey ? "Using system key (AI Studio managed)" : "AIzaSy..."}
               />
-              <p className="text-[10px] text-neutral-400">Stored locally in your browser.</p>
+              <p className="text-[10px] text-neutral-400">
+                Stored locally in your browser. Check your quota at{" "}
+                <a href="https://ai.google.dev/gemini-api/docs/rate-limits" target="_blank" className="text-blue-500 hover:underline">ai.google.dev</a>
+              </p>
             </div>
 
             <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl">

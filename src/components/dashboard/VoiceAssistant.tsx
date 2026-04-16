@@ -17,7 +17,7 @@ interface VoiceAssistantProps {
   onCreateFile: (name: string, folderId: string | null, content?: string) => Promise<string | void>;
   currentFolderId: string | null;
   currentSessionId: string | null;
-  onLogAction: (msg: string, isSilent?: boolean) => Promise<void>;
+  onLogAction: (msg: string, isSilent?: boolean, role?: 'user' | 'assistant' | 'system') => Promise<void>;
   onStateChange?: (isActive: boolean) => void;
 }
 
@@ -54,6 +54,7 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const nextPlayTimeRef = useRef<number>(0);
   const currentAiTextRef = useRef<string>("");
+  const currentUserTextRef = useRef<string>("");
 
   useImperativeHandle(ref, () => ({
     toggle: () => {
@@ -126,7 +127,15 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
                 }
             }
 
-            // Also capture server-transcribed text
+            // Capture user's input transcription
+            if (message.serverContent?.outputTranscription && message.serverContent.outputTranscription.text) {
+                currentUserTextRef.current += message.serverContent.outputTranscription.text;
+                // For user, log immediately or on turnComplete? 
+                // AICopilot logs it immediately.
+                onLogAction(message.serverContent.outputTranscription.text, true, 'user');
+            }
+
+            // Capture model's output transcription
             if (message.serverContent?.outputAudioTranscription?.text) {
                 currentAiTextRef.current += message.serverContent.outputAudioTranscription.text;
             }
@@ -135,11 +144,11 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
             if (message.serverContent?.turnComplete) {
                 const text = currentAiTextRef.current.trim();
                 if (text) {
-                    // Log to chat with isSilent=true so it triggers command execution in AICopilot but stays hidden in UI
-                    onLogAction(text, true);
+                    onLogAction(text, true, 'assistant');
                     setLastLiveResponse(text);
                 }
                 currentAiTextRef.current = "";
+                currentUserTextRef.current = "";
             }
           },
           onclose: () => stopSession(),
@@ -257,7 +266,7 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                   <span className="text-[10px] text-white/50 uppercase tracking-[0.2em] font-bold">
-                    Live Session
+                    Connected to Copilot
                   </span>
                 </div>
                 <button onClick={stopSession} className="p-1 hover:bg-white/10 rounded-full text-white/50 hover:text-white transition-colors">

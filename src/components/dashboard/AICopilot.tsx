@@ -16,14 +16,12 @@ interface AICopilotProps {
   files: FileItem[];
   onNavigate: (folderId: string | null) => void;
   onOpenSettings: () => void;
-  isLive?: boolean;
-  onStartLive?: () => void;
-  onStopLive?: () => void;
+  sessionId: string | null;
+  onSessionChange: (id: string | null) => void;
   onCreateFile: (name: string, folderId: string | null, content?: string, type?: FileType) => Promise<string | undefined>;
   onUpdateFile: (id: string, updates: Partial<FileItem>) => Promise<void>;
   onDeleteFile: (id: string) => Promise<void>;
   onCreateFolder: (name: string, parentId: string | null) => Promise<string | undefined>;
-  onSessionChange: (id: string | null) => void;
 }
 
 function parseCommandArg(line: string, argName: string) {
@@ -139,6 +137,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   files,
   onNavigate, 
   onOpenSettings, 
+  sessionId: propSessionId,
   onCreateFile, 
   onUpdateFile,
   onDeleteFile,
@@ -146,7 +145,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   onSessionChange 
 }: AICopilotProps, ref) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(propSessionId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isLive, setIsLive] = useState(false);
@@ -155,6 +154,12 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   const [isGenerating, setIsGenerating] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const processedCommands = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (propSessionId !== undefined && propSessionId !== currentSessionId) {
+      setCurrentSessionId(propSessionId);
+    }
+  }, [propSessionId]);
 
   useEffect(() => {
     const processCommands = async () => {
@@ -343,7 +348,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       const sessionList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatSession))
         .sort((a, b) => b.updatedAt - a.updatedAt);
       setSessions(sessionList);
-      if (!currentSessionId && sessionList.length > 0) {
+      if (!currentSessionId && sessionList.length > 0 && !propSessionId) {
         setCurrentSessionId(sessionList[0].id);
       }
     });
