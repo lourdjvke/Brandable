@@ -148,14 +148,61 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
             Current context: User is in folder path: /${currentPath.join("/")}.
             Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
 
-            Available commands:
-            - Create file: command: create_file --name=filename.txt --folder=folderNameOrId --content="content"
-            - Create folder: command: create_folder --name=folderName --parent=parentNameOrId
-            - Update file: command: update_file --id=fileId --content="content"
-            - Delete item: command: delete_item --id=itemId
-
-            Always provide a clear and concise text transcription of your full response including the commands.` }]
+            You can use tools to create files, folders, read files, update, and delete items. 
+            IMPORTANT:
+            1. DO NOT ask for permission for basic tasks. Be intelligent and self-directed. Just execute what the user is asking.
+            2. If you need to know what a file contains, use \`read_file\`. NEVER use \`update_file\` to read a file, and do not update files unless the user explicitly requests an update.
+            3. Always describe what you did or are about to do in your final text transcription.` }]
           },
+          tools: [{
+            functionDeclarations: [
+              {
+                name: "create_file",
+                description: "Create a new file.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    folderId: { type: "string" },
+                    content: { type: "string" },
+                    type: { type: "string" }
+                  }, required: ["name", "content"]
+                }
+              },
+              {
+                name: "create_folder",
+                description: "Create a new folder.",
+                parameters: {
+                  type: "object",
+                  properties: { name: { type: "string" }, parentId: { type: "string" } }, required: ["name"]
+                }
+              },
+              {
+                name: "update_file",
+                description: "Update an existing file.",
+                parameters: {
+                  type: "object",
+                  properties: { id: { type: "string" }, content: { type: "string" } }, required: ["id", "content"]
+                }
+              },
+              {
+                name: "read_file",
+                description: "Reads the content of an existing file.",
+                parameters: {
+                  type: "object",
+                  properties: { id: { type: "string" } }, required: ["id"]
+                }
+              },
+              {
+                name: "delete_item",
+                description: "Delete a file or folder.",
+                parameters: {
+                  type: "object",
+                  properties: { id: { type: "string" } }, required: ["id"]
+                }
+              }
+            ]
+          }],
           responseModalities: ["AUDIO"],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } },
           outputAudioTranscription: {},
@@ -171,6 +218,55 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
             if (message.serverContent?.interrupted) {
                 // Clear any pending audio if user interrupts
                 nextPlayTimeRef.current = playbackContextRef.current?.currentTime || 0;
+            }
+
+            // Check for tool calls
+            if (message.toolCall?.functionCalls) {
+              const functionResponses: any[] = [];
+              for (const call of message.toolCall.functionCalls) {
+                  addNotification({ title: "Executing Action", message: call.name.replace('_', ' '), type: "task" });
+                  let callResponse: any = { error: "Unknown error" };
+                  try {
+                      if (call.name === "create_file") {
+                          const { name, folderId, content, type } = call.args;
+                          const newId = await onCreateFile(name, folderId || currentFolderId, content, type as FileType);
+                          callResponse = { success: true, id: newId };
+                      } else if (call.name === "create_folder") {
+                          const { name, parentId } = call.args;
+                          const newId = await onCreateFolder(name, parentId || currentFolderId);
+                          callResponse = { success: true, id: newId };
+                      } else if (call.name === "update_file") {
+                          const { id, content } = call.args;
+                          await onUpdateFile(id, { content });
+                          callResponse = { success: true };
+                      } else if (call.name === "read_file") {
+                          const { id } = call.args;
+                          const fileStr = files.find(f => f.id === id);
+                          if (fileStr) {
+                              callResponse = { success: true, content: fileStr.content || "File is empty." };
+                          } else {
+                              callResponse = { error: "File not found" };
+                          }
+                      } else if (call.name === "delete_item") {
+                          const { id } = call.args;
+                          await onDeleteFile(id);
+                          callResponse = { success: true };
+                      }
+                  } catch (e: any) {
+                      console.error("Tool execution failed", e);
+                      callResponse = { error: e.message || String(e) };
+                  }
+                  functionResponses.push({
+                      id: call.id,
+                      name: call.name,
+                      response: callResponse
+                  });
+              }
+              if (liveSessionRef.current.sendToolResponse) {
+                liveSessionRef.current.sendToolResponse({ functionResponses });
+              } else if (liveSessionRef.current.send) {
+                liveSessionRef.current.send({ toolResponse: { functionResponses } });
+              }
             }
 
             // Check for audio output

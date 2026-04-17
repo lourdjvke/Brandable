@@ -43,20 +43,6 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   const lastScrollY = useRef(0);
 
   useEffect(() => {
-    const handleScroll = () => {
-      const currentScrollY = window.scrollY;
-      if (currentScrollY > lastScrollY.current && currentScrollY > 50) {
-        setShowBottomBar(false);
-      } else {
-        setShowBottomBar(true);
-      }
-      lastScrollY.current = currentScrollY;
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  useEffect(() => {
     if (!profile.uid) return;
     const q = query(collection(db, "files"), where("ownerId", "==", profile.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -65,6 +51,18 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
     });
     return () => unsubscribe();
   }, [profile.uid]);
+
+  const handleMainScroll = (e: React.UIEvent<HTMLElement>) => {
+    const currentScrollY = e.currentTarget.scrollTop;
+    const threshold = window.innerHeight * 0.05;
+    
+    if (currentScrollY > lastScrollY.current && currentScrollY > threshold) {
+      setShowBottomBar(false);
+    } else if (currentScrollY < lastScrollY.current) {
+      setShowBottomBar(true);
+    }
+    lastScrollY.current = currentScrollY;
+  };
 
   const toggleVoice = () => {
     if (voiceAssistantRef.current) {
@@ -235,7 +233,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
         )}
       </AnimatePresence>
 
-      <main className="flex-1 flex flex-col relative overflow-y-auto">
+      <main onScroll={handleMainScroll} className="flex-1 flex flex-col relative overflow-y-auto">
         {/* Mobile Header */}
         <header className="md:hidden sticky top-0 flex items-center justify-between px-4 py-3 border-b border-neutral-200 bg-white/80 backdrop-blur-md z-40">
           <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-neutral-500">
@@ -285,9 +283,17 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
         {/* Mobile Bottom Bar */}
         {!isDesktop && !isCopilotOpen && activeTab === "workspace" && !selectedFile && (
           <motion.div 
-            initial={{ y: 100 }}
-            animate={{ y: showBottomBar ? 0 : 100 }}
-            className="fixed bottom-4 left-4 right-4 bg-white rounded-lg border border-neutral-200 p-2 flex items-center gap-2 z-50"
+            initial={{ y: 100, opacity: 0, filter: "blur(10px)" }}
+            animate={{ 
+              y: showBottomBar ? 0 : 100,
+              opacity: showBottomBar ? 1 : 0,
+              filter: `blur(${showBottomBar ? 0 : 10}px)`
+            }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className={cn(
+              "fixed bottom-4 left-4 right-4 bg-white/90 backdrop-blur-md shadow-xl rounded-2xl border border-neutral-200 p-2 flex items-center gap-2 z-50",
+              showBottomBar ? "pointer-events-auto" : "pointer-events-none"
+            )}
           >
             <button 
               onClick={toggleVoice}

@@ -256,7 +256,7 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
                 key={file.id}
                 initial={{ opacity: 0.3, scale: 0.85, filter: "blur(10px)" }}
                 whileInView={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-                viewport={{ once: false, amount: 0.15, margin: "-10% 0px -10% 0px" }}
+                viewport={{ once: false, amount: 0.95, margin: "0px" }}
                 transition={{ duration: 0.6, ease: "easeOut" }}
                 className="w-full origin-center"
               >

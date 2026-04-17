@@ -6,7 +6,7 @@ import { Copy, Send, Mic, Square, Settings, Plus, Image as ImageIcon, X, Loader2
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
 import { GoogleGenAI as LiveGenAI, LiveServerMessage, Modality } from "@google/genai";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, FunctionDeclaration } from "@google/generative-ai";
 import ReactMarkdown from "react-markdown";
 
 interface AICopilotProps {
@@ -153,9 +153,9 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   const [isLive, setIsLive] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isExecutingCommand, setIsExecutingCommand] = useState(false);
+  const [toolExecutionStatus, setToolExecutionStatus] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
-  const processedCommands = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (propSessionId !== undefined && propSessionId !== currentSessionId) {
@@ -163,107 +163,6 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
     }
   }, [propSessionId]);
 
-  useEffect(() => {
-    const processCommands = async () => {
-      if (!currentSessionId) return;
-
-      // Find the last message that marks an execution as done
-      let lastDoneIndex = -1;
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].content?.includes("execution=done")) {
-          lastDoneIndex = i;
-          break;
-        }
-      }
-
-      // Process only messages that appear AFTER the last completion marker
-      for (let i = lastDoneIndex + 1; i < messages.length; i++) {
-        const msg = messages[i];
-        
-        // Robust command matching: can start with "command:" OR the action name directly
-        const commandLines = msg.content?.split('\n').filter(line => {
-          const t = line.trim();
-          return t.startsWith("command:") || 
-                 t.startsWith("create_file") || 
-                 t.startsWith("create_folder") || 
-                 t.startsWith("update_file") || 
-                 t.startsWith("delete_item");
-        }) || [];
-        
-        if (msg.role === 'assistant' && 
-            commandLines.length > 0 && 
-            !processedCommands.current.has(msg.id)) {
-          
-          processedCommands.current.add(msg.id);
-          setIsExecutingCommand(true);
-          try {
-            for (const commandLine of commandLines) {
-              const content = commandLine.trim();
-
-              if (content.includes("create_file")) {
-                const fileName = parseCommandArg(content, "name") || "Untitled";
-                const folderNameOrId = parseCommandArg(content, "folder");
-                const fileContent = parseCommandArg(content, "content") || "";
-                
-                let fileType: FileType = "script";
-                if (fileName.endsWith(".txt")) fileType = "brainstorm";
-                else if (fileName.includes("caption") || fileName.endsWith(".sm")) fileType = "caption";
-                else if (fileName.includes("thread") || fileName.endsWith(".tw")) fileType = "thread";
-                else if (fileName.includes("brainstorm")) fileType = "brainstorm";
-
-                let folderId = currentFolderId;
-                if (folderNameOrId) {
-                  const existingFolder = files.find(f => f.type === 'folder' && (f.id === folderNameOrId || f.name.toLowerCase() === folderNameOrId.toLowerCase()));
-                  if (existingFolder) {
-                    folderId = existingFolder.id;
-                  } else {
-                    folderId = await onCreateFolder(folderNameOrId, currentFolderId) || currentFolderId;
-                  }
-                }
-
-                await onCreateFile(fileName, folderId, fileContent, fileType);
-              } else if (content.includes("create_folder")) {
-                const folderName = parseCommandArg(content, "name") || "Untitled Folder";
-                const parentNameOrId = parseCommandArg(content, "parent");
-                
-                let parentId = currentFolderId;
-                if (parentNameOrId) {
-                  const existingParent = files.find(f => f.type === 'folder' && (f.id === parentNameOrId || f.name.toLowerCase() === parentNameOrId.toLowerCase()));
-                  if (existingParent) parentId = existingParent.id;
-                }
-
-                await onCreateFolder(folderName, parentId);
-              } else if (content.includes("update_file")) {
-                const id = parseCommandArg(content, "id");
-                const fileContent = parseCommandArg(content, "content");
-
-                if (id && fileContent !== null) {
-                  await onUpdateFile(id, { content: fileContent });
-                }
-              } else if (content.includes("delete_item")) {
-                const id = parseCommandArg(content, "id");
-                if (id) {
-                  await onDeleteFile(id);
-                }
-              }
-            }
-
-            // Success marker
-            await saveMessage(currentSessionId, {
-              role: "assistant",
-              content: `Commands executed successfully. execution=done`,
-              createdAt: Date.now()
-            });
-          } catch (e) {
-            console.error("Failed to parse/execute auto-detection AI command", e);
-          } finally {
-            setIsExecutingCommand(false);
-          }
-        }
-      }
-    };
-    processCommands();
-  }, [messages, onCreateFile, onUpdateFile, onDeleteFile, onCreateFolder, currentFolderId, currentSessionId, files]);
   const [attachedImages, setAttachedImages] = useState<{ url: string; file: File }[]>([]);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [lastLiveResponse, setLastLiveResponse] = useState<string>("");
@@ -533,21 +432,83 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           
           usedModelName = currentModelName;
 
+          const tools: any = [{
+            functionDeclarations: [
+              {
+                name: "create_file",
+                description: "Create a new file.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string", description: "Name of the file" },
+                    folderId: { type: "string", description: "ID of the folder or null" },
+                    content: { type: "string", description: "Initial content for the file" },
+                    type: { type: "string", description: "Type of file (e.g. script, caption, brainstorm)"}
+                  },
+                  required: ["name", "content"]
+                }
+              },
+              {
+                name: "create_folder",
+                description: "Create a new folder.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string", description: "Name of the folder" },
+                    parentId: { type: "string", description: "ID of the parent folder or null" }
+                  },
+                  required: ["name"]
+                }
+              },
+              {
+                name: "update_file",
+                description: "Update an existing file.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string", description: "ID of the file" },
+                    content: { type: "string", description: "New content for the file" }
+                  },
+                  required: ["id", "content"]
+                }
+              },
+              {
+                name: "read_file",
+                description: "Reads the content of an existing file.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string", description: "ID of the file to read" }
+                  },
+                  required: ["id"]
+                }
+              },
+              {
+                name: "delete_item",
+                description: "Delete a file or folder.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string", description: "ID of the item" }
+                  },
+                  required: ["id"]
+                }
+              }
+            ]
+          }];
+
           const model = genAI.getGenerativeModel({ 
             model: usedModelName,
+            tools,
             systemInstruction: `You are Brandable's AI Copilot. You help users manage their content, scripts, captions, and brainstorms.
             Current context: User is in folder path: /${currentPath.join("/")}.
             Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
 
-            Available commands:
-            - Create file: command: create_file --name=filename.txt --folder=folderNameOrId --content="initial content"
-            - Create folder: command: create_folder --name=folderName --parent=parentNameOrId
-            - Update file: command: update_file --id=fileId --content="new content"
-            - Delete item: command: delete_item --id=itemId
-
-            If a user asks to create a file/folder or edit something, you MUST respond with the precisely formatted command.
-            You should be smart about file types (script for code/logic, caption for social media, brainstorm for ideas).
-            Always include a helpful description of what you are doing in your response.`
+            You can use tools to create files, folders, read files, update files, and delete items.
+            IMPORTANT:
+            1. DO NOT ask for permission for basic tasks. Be intelligent and self-directed. Just execute what the user is asking.
+            2. If you need to know what a file contains, use \`read_file\`. NEVER use \`update_file\` to read a file, and do not update files unless the user explicitly requests an update.
+            3. Always describe what you did or are about to do in your final text response.`
           });
 
           const history = currentMessages.slice(0, -1).map(m => ({
@@ -570,8 +531,58 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           }
 
           const chat = model.startChat({ history: finalHistory });
-          const result = await chat.sendMessage(lastMsgParts);
+          let result = await chat.sendMessage(lastMsgParts);
           finalResponse = await result.response;
+
+          let functionCalls = finalResponse.functionCalls();
+          while (functionCalls && functionCalls.length > 0) {
+            setToolExecutionStatus("Executing tasks...");
+            let functionResponses: any[] = [];
+            for (const call of functionCalls) {
+              setToolExecutionStatus(`Executing task: ${call.name.replace('_', ' ')}...`);
+              let callResponse: any = { error: "Unknown error" };
+              try {
+                if (call.name === "create_file") {
+                  const { name, folderId, content, type } = call.args;
+                  const newId = await onCreateFile(name, folderId || currentFolderId, content, type as FileType);
+                  callResponse = { success: true, id: newId };
+                } else if (call.name === "create_folder") {
+                  const { name, parentId } = call.args;
+                  const newId = await onCreateFolder(name, parentId || currentFolderId);
+                  callResponse = { success: true, id: newId };
+                } else if (call.name === "read_file") {
+                  const { id } = call.args;
+                  const fileStr = files.find(f => f.id === id);
+                  if (fileStr) {
+                    callResponse = { success: true, content: fileStr.content || "File is empty or content is unavailable." };
+                  } else {
+                    callResponse = { error: "File not found" };
+                  }
+                } else if (call.name === "update_file") {
+                  const { id, content } = call.args;
+                  await onUpdateFile(id, { content });
+                  callResponse = { success: true };
+                } else if (call.name === "delete_item") {
+                  const { id } = call.args;
+                  await onDeleteFile(id);
+                  callResponse = { success: true };
+                } else {
+                  callResponse = { error: "Unknown tool" };
+                }
+              } catch (e: any) {
+                console.error("Function call execution error:", e);
+                callResponse = { error: e.message || String(e) };
+              }
+              functionResponses.push({
+                functionResponse: { name: call.name, response: callResponse }
+              });
+            }
+            result = await chat.sendMessage(functionResponses);
+            finalResponse = await result.response;
+            functionCalls = finalResponse.functionCalls();
+          }
+
+          setToolExecutionStatus(null);
           break; // Success!
         } catch (err) {
           console.error(`Attempt ${attempts + 1} failed with model ${usedModelName}:`, err);
@@ -583,25 +594,12 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
 
       if (!finalResponse) throw lastError;
 
-      const responseText = finalResponse.text() || "I couldn't generate a response.";
+      const responseText = finalResponse.text() || "Finished executing actions.";
       let assistantMessage: Omit<ChatMessage, "id"> = {
         role: "assistant",
         content: responseText,
         createdAt: Date.now()
       };
-
-      // Check for command
-      try {
-        const commandMatch = responseText.match(/command:\s*create_file\s*--name=([^\s]+)/);
-        if (commandMatch) {
-            const fileName = commandMatch[1];
-            await onCreateFile(fileName, currentFolderId);
-            // Replace the command with a clean confirmation message, keeping the rest of the generated text
-            assistantMessage.content = responseText.replace(commandMatch[0], `I've created the file "${fileName}" for you.`).trim();
-        }
-      } catch (e) {
-          console.error("Failed to parse/execute AI command", e);
-      }
 
       await saveMessage(sessionId, assistantMessage);
       
@@ -977,8 +975,11 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             <Loader2 className="w-5 h-5 animate-spin text-neutral-400" />
           </div>
         )}
-        {isExecutingCommand && (
-          <div className="self-start text-xs text-blue-500 font-medium px-4 py-2">Executing....</div>
+        {toolExecutionStatus && (
+          <div className="self-start text-xs text-blue-500 font-medium px-4 py-2 flex items-center gap-2">
+            <Loader2 className="w-3 h-3 animate-spin inline-block" />
+            {toolExecutionStatus}
+          </div>
         )}
         <div ref={messagesEndRef} />
       </div>
