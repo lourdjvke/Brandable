@@ -1183,6 +1183,14 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             setToolExecutionStatus(null);
           },
           onmessage: async (message: any) => {
+            // Handle GoAway signal from server (e.g. session timeout)
+            // The protocol sends setupComplete: false to indicate session is ending
+            if (message.setupComplete === false) {
+              console.log("Gemini Live session ending (GoAway signal received)");
+              stopLiveSession();
+              return;
+            }
+
             // Handle tool calls in live session
             if (message.toolCall?.functionCalls) {
               const functionResponses: any[] = [];
@@ -1302,6 +1310,12 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               setLastLiveResponse(currentAiText);
             }
 
+            if (message.serverContent?.close || message.serverContent?.goAway) {
+              console.log("Server signaled connection close or GoAway.");
+              stopLiveSession();
+              return;
+            }
+
             if (message.serverContent?.interrupted) {
               stopCurrentAudio();
             }
@@ -1378,6 +1392,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           },
           onerror: (err: any) => {
             console.error("Live session error:", err);
+            stopLiveSession();
           }
         }
       });

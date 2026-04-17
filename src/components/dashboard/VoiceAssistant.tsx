@@ -297,6 +297,13 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
             addNotification({ title: "Voice Assistant Active", message: "Listening...", type: "task" });
           },
           onmessage: async (message: any) => {
+            // Handle GoAway signal from server (e.g. session timeout)
+            if (message.serverContent?.close || message.serverContent?.goAway || message.setupComplete === false) {
+              console.log("Gemini Live session ending (GoAway signal received)");
+              stopSession();
+              return;
+            }
+
             if (message.serverContent?.interrupted) {
                 // Clear any pending audio if user interrupts
                 nextPlayTimeRef.current = playbackContextRef.current?.currentTime || 0;
