@@ -168,6 +168,110 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   const [lastLiveResponse, setLastLiveResponse] = useState<string>("");
   const [selectedModel, setSelectedModel] = useState<string>("gemini-2.5-flash");
   const [showModelSelector, setShowModelSelector] = useState(false);
+  const processedCommands = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const processCommands = async () => {
+      if (!currentSessionId) return;
+
+      let lastDoneIndex = -1;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].content?.includes("execute=done") || messages[i].content?.includes("execution=done")) {
+          lastDoneIndex = i;
+          break;
+        }
+      }
+
+      for (let i = lastDoneIndex + 1; i < messages.length; i++) {
+        const msg = messages[i];
+        
+        const commandLines = msg.content?.split('\n').filter(line => {
+          const t = line.trim();
+          return t.startsWith("command:") || 
+                 t.startsWith("create_file") || 
+                 t.startsWith("create_folder") || 
+                 t.startsWith("update_file") || 
+                 t.startsWith("delete_item") ||
+                 t.startsWith("read_file");
+        }) || [];
+        
+        if (msg.role === 'assistant' && 
+            commandLines.length > 0 && 
+            !processedCommands.current.has(msg.id)) {
+          
+          processedCommands.current.add(msg.id);
+          setToolExecutionStatus("Executing text commands...");
+          
+          try {
+            for (let commandLine of commandLines) {
+              let content = commandLine.trim();
+
+              const parseCommandArg = (line: string, argName: string) => {
+                const regex = new RegExp(`--${argName}=(?:"([^"]*)"|([^\\s]+))`);
+                const match = line.match(regex);
+                if (!match) return null;
+                return (match[1] !== undefined ? match[1] : match[2]) || "";
+              };
+
+              if (content.includes("create_file")) {
+                const fileName = parseCommandArg(content, "name") || "Untitled";
+                const folderNameOrId = parseCommandArg(content, "folder");
+                let fileContent = parseCommandArg(content, "content") || "";
+                fileContent = fileContent.replace(/\\n/g, '\n'); // Support literal \n output
+                
+                let fileType: FileType = "script";
+                if (fileName.endsWith(".txt")) fileType = "brainstorm";
+                else if (fileName.includes("caption") || fileName.endsWith(".sm")) fileType = "caption";
+                else if (fileName.includes("thread") || fileName.endsWith(".tw")) fileType = "thread";
+                else if (fileName.includes("brainstorm")) fileType = "brainstorm";
+
+                let folderId = currentFolderId;
+                if (folderNameOrId && folderNameOrId !== "null" && folderNameOrId !== "undefined") {
+                  const existingFolder = files.find(f => f.type === 'folder' && (f.id === folderNameOrId || f.name.toLowerCase() === folderNameOrId.toLowerCase()));
+                  if (existingFolder) folderId = existingFolder.id;
+                }
+
+                await onCreateFile(fileName, folderId, fileContent, fileType);
+              } else if (content.includes("create_folder")) {
+                const folderName = parseCommandArg(content, "name") || "Untitled Folder";
+                const parentNameOrId = parseCommandArg(content, "parent");
+                
+                let parentId = currentFolderId;
+                if (parentNameOrId && parentNameOrId !== "null" && parentNameOrId !== "undefined") {
+                  const existingParent = files.find(f => f.type === 'folder' && (f.id === parentNameOrId || f.name.toLowerCase() === parentNameOrId.toLowerCase()));
+                  if (existingParent) parentId = existingParent.id;
+                }
+
+                await onCreateFolder(folderName, parentId);
+              } else if (content.includes("update_file")) {
+                const id = parseCommandArg(content, "id");
+                let fileContent = parseCommandArg(content, "content");
+                if (fileContent !== null) {
+                  fileContent = fileContent.replace(/\\n/g, '\n');
+                  if (id) await onUpdateFile(id, { content: fileContent });
+                }
+              } else if (content.includes("delete_item")) {
+                const id = parseCommandArg(content, "id");
+                if (id) await onDeleteFile(id);
+              }
+            }
+
+            // Provide visual feedback / system marker that the commands ran
+            await saveMessage(currentSessionId, {
+              role: "system",
+              content: `Text commands executed successfully. execute=done`,
+              createdAt: Date.now()
+            });
+          } catch (e) {
+            console.error("Failed to parse/execute auto-detection AI commands:", e);
+          } finally {
+            setToolExecutionStatus(null);
+          }
+        }
+      }
+    };
+    processCommands();
+  }, [messages, onCreateFile, onUpdateFile, onDeleteFile, onCreateFolder, currentFolderId, currentSessionId, files]);
 
   const TEXT_MODELS = [
     { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
@@ -505,6 +609,9 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
 
             You can use tools to create files, folders, read files, update files, and delete items.
+            Alternatively, you can also output raw commands perfectly formatted in your response text to execute them, e.g.:
+            command: create_file --name="filename.txt" --folder="folderNameOrId" --content="your content\\nhere"
+            
             IMPORTANT:
             1. DO NOT ask for permission for basic tasks. Be intelligent and self-directed. Just execute what the user is asking.
             2. If you need to know what a file contains, use \`read_file\`. NEVER use \`update_file\` to read a file, and do not update files unless the user explicitly requests an update.

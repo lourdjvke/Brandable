@@ -149,6 +149,9 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
             Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
 
             You can use tools to create files, folders, read files, update, and delete items. 
+            Alternatively, you can also speak raw commands perfectly formatted in your response text to execute them, e.g.:
+            command: create_file --name="filename.txt" --folder="folderNameOrId" --content="your content\\nhere"
+            
             IMPORTANT:
             1. DO NOT ask for permission for basic tasks. Be intelligent and self-directed. Just execute what the user is asking.
             2. If you need to know what a file contains, use \`read_file\`. NEVER use \`update_file\` to read a file, and do not update files unless the user explicitly requests an update.
