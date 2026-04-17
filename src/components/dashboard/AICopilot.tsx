@@ -866,21 +866,58 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       let currentAiText = "";
 
       const sessionPromise = (liveAI as any).live.connect({
-        model: "gemini-3.1-flash-live-preview",
+        model: "models/gemini-2.0-flash-exp",
         config: {
           systemInstruction: {
             parts: [{ text: `You are Brandable's AI Copilot. You are in a live voice session.
             Current context: User is in folder path: /${currentPath.join("/")}.
             Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
 
-            Available commands:
-            - Create file: command: create_file --name=filename.txt --folder=folderNameOrId --content="content"
-            - Create folder: command: create_folder --name=folderName --parent=parentNameOrId
-            - Update file: command: update_file --id=fileId --content="content"
-            - Delete item: command: delete_item --id=itemId
+            You can use tools to create files, folders, read files, update files, delete items, move items, rename, or open items.
+            Alternatively, you can also speak raw commands perfectly formatted in your response text to execute them, e.g.:
+            command: create_file --name="filename.txt" --folder="folderNameOrId" --content="your content\\nhere"
+            command: move_item --id="itemId" --parent="folderIdOrNull"
+            command: rename_item --id="itemId" --name="new name"
+            command: open_item --id="itemId"
 
             Always provide a clear and concise text transcription of your full response including the commands.` }]
           },
+          tools: [{
+            functionDeclarations: [
+              {
+                name: "create_file", description: "Create a new file.",
+                parameters: { type: "object", properties: { name: { type: "string" }, folderId: { type: "string" }, content: { type: "string" }, type: { type: "string" } }, required: ["name", "content"] }
+              },
+              {
+                name: "create_folder", description: "Create a new folder.",
+                parameters: { type: "object", properties: { name: { type: "string" }, parentId: { type: "string" } }, required: ["name"] }
+              },
+              {
+                name: "update_file", description: "Update an existing file.",
+                parameters: { type: "object", properties: { id: { type: "string" }, content: { type: "string" } }, required: ["id", "content"] }
+              },
+              {
+                name: "read_file", description: "Reads the content of an existing file.",
+                parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"] }
+              },
+              {
+                name: "delete_item", description: "Delete a file or folder.",
+                parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"] }
+              },
+              {
+                name: "rename_item", description: "Rename a file or folder.",
+                parameters: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } }, required: ["id", "name"] }
+              },
+              {
+                name: "move_item", description: "Move a file or folder to a new parent.",
+                parameters: { type: "object", properties: { id: { type: "string" }, parentId: { type: "string" } }, required: ["id"] }
+              },
+              {
+                name: "open_item", description: "Open a file or folder in UI.",
+                parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"] }
+              }
+            ]
+          }],
           responseModalities: ["AUDIO"],
           speechConfig: {
             voiceConfig: {
@@ -897,6 +934,74 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             console.log("Live session opened");
           },
           onmessage: async (message: any) => {
+            if (message.toolCall?.functionCalls) {
+              const functionResponses: any[] = [];
+              for (const call of message.toolCall.functionCalls) {
+                  setToolExecutionStatus(`Executing task: ${call.name.replace('_', ' ')}...`);
+                  let callResponse: any = { error: "Unknown error" };
+                  try {
+                      if (call.name === "create_file") {
+                          const { name, folderId, content, type } = call.args;
+                          const newId = await onCreateFile(name, folderId || currentFolderId, content, type as FileType);
+                          callResponse = { success: true, id: newId };
+                      } else if (call.name === "create_folder") {
+                          const { name, parentId } = call.args;
+                          const newId = await onCreateFolder(name, parentId || currentFolderId);
+                          callResponse = { success: true, id: newId };
+                      } else if (call.name === "update_file") {
+                          const { id, content } = call.args;
+                          await onUpdateFile(id, { content });
+                          callResponse = { success: true };
+                      } else if (call.name === "read_file") {
+                          const { id } = call.args;
+                          const fileStr = files.find(f => f.id === id);
+                          if (fileStr) {
+                              callResponse = { success: true, content: fileStr.content || "File is empty." };
+                          } else {
+                              callResponse = { error: "File not found" };
+                          }
+                      } else if (call.name === "delete_item") {
+                          const { id } = call.args;
+                          await onDeleteFile(id);
+                          callResponse = { success: true };
+                      } else if (call.name === "move_item") {
+                          const { id, parentId } = call.args;
+                          const newParent = parentId === "root" || parentId === "null" ? null : parentId;
+                          await onUpdateFile(id, { parentId: newParent });
+                          callResponse = { success: true };
+                      } else if (call.name === "rename_item") {
+                          const { id, name } = call.args;
+                          await onUpdateFile(id, { name });
+                          callResponse = { success: true };
+                      } else if (call.name === "open_item") {
+                          const { id } = call.args;
+                          const file = files.find(f => f.id === id);
+                          if (file) {
+                              if (file.type === "folder") onNavigate(file.id);
+                              else onOpenFile(file);
+                              callResponse = { success: true };
+                          } else {
+                              callResponse = { error: "File not found" };
+                          }
+                      }
+                  } catch (e: any) {
+                      console.error("Tool execution failed", e);
+                      callResponse = { error: e.message || String(e) };
+                  }
+                  functionResponses.push({
+                      id: call.id,
+                      name: call.name,
+                      response: callResponse
+                  });
+              }
+              if (liveSessionRef.current.sendToolResponse) {
+                liveSessionRef.current.sendToolResponse({ functionResponses });
+              } else if (liveSessionRef.current.send) {
+                liveSessionRef.current.send({ toolResponse: { functionResponses } });
+              }
+              setToolExecutionStatus(null);
+            }
+
             // Debug refinement: Only update when we have output transcription
             if (message.serverContent?.outputTranscription && message.serverContent.outputTranscription.text) {
               console.log("Live transcription message received:", message.serverContent.outputTranscription.text);
