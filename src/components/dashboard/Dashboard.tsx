@@ -58,7 +58,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
     
     if (currentScrollY > lastScrollY.current && currentScrollY > threshold) {
       setShowBottomBar(false);
-    } else if (currentScrollY < lastScrollY.current) {
+    } else {
       setShowBottomBar(true);
     }
     lastScrollY.current = currentScrollY;

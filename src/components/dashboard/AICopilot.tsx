@@ -27,10 +27,17 @@ interface AICopilotProps {
 }
 
 function parseCommandArg(line: string, argName: string) {
-  const regex = new RegExp(`--${argName}=(?:"([^"]*)"|([^\\s]+))`);
+  // Support --name="val", --name=val, name="val", name: "val"
+  const regex = new RegExp(`(?:--|-)?${argName}\\s*[:=]\\s*(?:"([^"]*)"|([^\\s]+))`, "i");
   const match = line.match(regex);
-  if (!match) return null;
-  return (match[1] !== undefined ? match[1] : match[2]) || "";
+  if (match) return (match[1] !== undefined ? match[1] : match[2]) || "";
+  
+  // Fallback for ID specifically if user types "open folder -ID"
+  if (argName === 'id') {
+    const fallbackMatch = line.match(/\s-([a-zA-Z0-9_-]{15,})/);
+    if (fallbackMatch) return fallbackMatch[1];
+  }
+  return null;
 }
 
 function MessageBubble({ msg, viewingImage, setViewingImage }: { msg: ChatMessage; viewingImage: string | null; setViewingImage: (url: string | null) => void }) {
@@ -41,15 +48,20 @@ function MessageBubble({ msg, viewingImage, setViewingImage }: { msg: ChatMessag
     const lines = content.split('\n');
     return lines.map((line, i) => {
       const trimmed = line.trim();
-      const isCommand = trimmed.startsWith('command:') || 
+      const isCommand = trimmed.toLowerCase().startsWith('command:') || 
                         trimmed.startsWith('create_file') || 
                         trimmed.startsWith('create_folder') || 
                         trimmed.startsWith('update_file') || 
                         trimmed.startsWith('delete_item') ||
                         trimmed.startsWith('read_file') ||
+                        trimmed.startsWith('read_item') ||
                         trimmed.startsWith('move_item') ||
+                        trimmed.startsWith('move_file') ||
                         trimmed.startsWith('rename_item') ||
-                        trimmed.startsWith('open_item');
+                        trimmed.startsWith('rename_file') ||
+                        trimmed.startsWith('open_item') ||
+                        trimmed.startsWith('open_file') ||
+                        trimmed.startsWith('open_folder');
 
       if (isCommand) {
         return (
@@ -145,6 +157,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   onOpenSettings, 
   sessionId: propSessionId,
   apiKey: propApiKey,
+  onOpenFile,
   onCreateFile, 
   onUpdateFile,
   onDeleteFile,
@@ -191,16 +204,25 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
         const msg = messages[i];
         
         const commandLines = msg.content?.split('\n').filter(line => {
-          const t = line.trim();
+          const t = line.trim().toLowerCase();
           return t.startsWith("command:") || 
                  t.startsWith("create_file") || 
                  t.startsWith("create_folder") || 
                  t.startsWith("update_file") || 
                  t.startsWith("delete_item") ||
                  t.startsWith("read_file") ||
+                 t.startsWith("read_item") ||
                  t.startsWith("move_item") ||
+                 t.startsWith("move_file") ||
                  t.startsWith("rename_item") ||
-                 t.startsWith("open_item");
+                 t.startsWith("rename_file") ||
+                 t.startsWith("open_item") ||
+                 t.startsWith("open_file") ||
+                 t.startsWith("open_folder") ||
+                 t.startsWith("close_file") ||
+                 t.startsWith("go_to_root") ||
+                 t.startsWith("navigate_up") ||
+                 t.startsWith("duplicate_item");
         }) || [];
         
         if (msg.role === 'assistant' && 
@@ -214,18 +236,22 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             for (let commandLine of commandLines) {
               let content = commandLine.trim();
 
-              const parseCommandArg = (line: string, argName: string) => {
-                const regex = new RegExp(`--${argName}=(?:"([^"]*)"|([^\\s]+))`);
+              const cmdLineParser = (line: string, argName: string) => {
+                const regex = new RegExp(`(?:--|-)?${argName}\\s*[:=]\\s*(?:"([^"]*)"|([^\\s]+))`, "i");
                 const match = line.match(regex);
-                if (!match) return null;
-                return (match[1] !== undefined ? match[1] : match[2]) || "";
+                if (match) return (match[1] !== undefined ? match[1] : match[2]) || "";
+                if (argName === 'id') {
+                  const fallbackMatch = line.match(/\s-([a-zA-Z0-9_-]{15,})/);
+                  if (fallbackMatch) return fallbackMatch[1];
+                }
+                return null;
               };
 
               if (content.includes("create_file")) {
-                const fileName = parseCommandArg(content, "name") || "Untitled";
-                const folderNameOrId = parseCommandArg(content, "folder");
-                let fileContent = parseCommandArg(content, "content") || "";
-                fileContent = fileContent.replace(/\\n/g, '\n'); // Support literal \n output
+                const fileName = cmdLineParser(content, "name") || "Untitled";
+                const folderNameOrId = cmdLineParser(content, "folder") || cmdLineParser(content, "folderId");
+                let fileContent = cmdLineParser(content, "content") || "";
+                fileContent = fileContent.replace(/\\n/g, '\n'); 
                 
                 let fileType: FileType = "script";
                 if (fileName.endsWith(".txt")) fileType = "brainstorm";
@@ -244,8 +270,8 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
 
                 await onCreateFile(fileName, folderId, fileContent, fileType);
               } else if (content.includes("create_folder")) {
-                const folderName = parseCommandArg(content, "name") || "Untitled Folder";
-                const parentNameOrId = parseCommandArg(content, "parent");
+                const folderName = cmdLineParser(content, "name") || "Untitled Folder";
+                const parentNameOrId = cmdLineParser(content, "parent") || cmdLineParser(content, "parentId");
                 
                 let parentId = currentFolderId;
                 if (parentNameOrId && parentNameOrId !== "null" && parentNameOrId !== "undefined" && parentNameOrId !== "root") {
@@ -258,18 +284,21 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
 
                 await onCreateFolder(folderName, parentId);
               } else if (content.includes("update_file")) {
-                const id = parseCommandArg(content, "id");
-                let fileContent = parseCommandArg(content, "content");
+                const id = cmdLineParser(content, "id");
+                let fileContent = cmdLineParser(content, "content");
                 if (fileContent !== null) {
                   fileContent = fileContent.replace(/\\n/g, '\n');
                   if (id) await onUpdateFile(id, { content: fileContent });
                 }
               } else if (content.includes("delete_item")) {
-                const id = parseCommandArg(content, "id");
-                if (id) await onDeleteFile(id);
-              } else if (content.includes("move_item")) {
-                const id = parseCommandArg(content, "id");
-                const parentNameOrId = parseCommandArg(content, "parent");
+                const id = cmdLineParser(content, "id");
+                const confirmed = cmdLineParser(content, "confirmed");
+                if (id && (confirmed === "true" || confirmed === "1" || confirmed === "yes")) {
+                  await onDeleteFile(id);
+                }
+              } else if (content.includes("move_item") || content.includes("move_file")) {
+                const id = cmdLineParser(content, "id");
+                const parentNameOrId = cmdLineParser(content, "parent") || cmdLineParser(content, "folderId") || cmdLineParser(content, "folder");
                 if (id) {
                     let parentId = currentFolderId;
                     if (parentNameOrId && parentNameOrId !== "null" && parentNameOrId !== "undefined" && parentNameOrId !== "root") {
@@ -281,20 +310,43 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                     }
                     await onUpdateFile(id, { parentId });
                 }
-              } else if (content.includes("rename_item")) {
-                const id = parseCommandArg(content, "id");
-                const name = parseCommandArg(content, "name");
+              } else if (content.includes("rename_item") || content.includes("rename_file")) {
+                const id = cmdLineParser(content, "id");
+                const name = cmdLineParser(content, "name") || cmdLineParser(content, "title");
                 if (id && name) {
                     await onUpdateFile(id, { name });
                 }
-              } else if (content.includes("open_item")) {
-                const id = parseCommandArg(content, "id");
+              } else if (content.includes("open_item") || content.includes("open_file") || content.includes("open_folder")) {
+                const id = cmdLineParser(content, "id") || content.match(/\s-([a-zA-Z0-9_-]{15,})/)?.[1];
                 if (id) {
                     const file = files.find(f => f.id === id);
                     if (file) {
                         if (file.type === "folder") onNavigate(file.id);
                         else onOpenFile(file);
                     }
+                }
+              } else if (content.includes("duplicate_item")) {
+                const id = cmdLineParser(content, "id");
+                if (id) {
+                  const original = files.find(f => f.id === id);
+                  if (original) await onCreateFile(`${original.name} (Copy)`, original.parentId, original.content, original.type);
+                }
+              } else if (content.includes("close_file")) {
+                onOpenFile(null as any);
+              } else if (content.includes("go_to_root")) {
+                onNavigate(null);
+              } else if (content.includes("navigate_up")) {
+                if (currentFolderId) {
+                  const cf = files.find(f => f.id === currentFolderId);
+                  onNavigate(cf?.parentId || null);
+                }
+              } else if (content.includes("read_file") || content.includes("read_item")) {
+                const id = cmdLineParser(content, "id");
+                if (id) {
+                  const file = files.find(f => f.id === id);
+                  if (file) {
+                    console.log("Reading file content for text AI command...");
+                  }
                 }
               }
             }
@@ -631,12 +683,67 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                 }
               },
               {
-                name: "delete_item",
-                description: "Delete a file or folder.",
+                name: "duplicate_item",
+                description: "Duplicate an existing file or folder.",
                 parameters: {
                   type: "object",
                   properties: {
-                    id: { type: "string", description: "ID of the item" }
+                    id: { type: "string", description: "ID of the item to duplicate" }
+                  },
+                  required: ["id"]
+                }
+              },
+              {
+                name: "search_content",
+                description: "Search for text within all files and items in the workspace.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    query: { type: "string", description: "The text to search for" }
+                  },
+                  required: ["query"]
+                }
+              },
+              {
+                name: "analyze_workspace",
+                description: "Get a comprehensive analysis of the current workspace structure and all contents.",
+                parameters: { type: "object", properties: {} }
+              },
+              {
+                name: "close_file",
+                description: "Close the currently open file preview.",
+                parameters: { type: "object", properties: {} }
+              },
+              {
+                name: "go_to_root",
+                description: "Navigate to the root level of the workspace.",
+                parameters: { type: "object", properties: {} }
+              },
+              {
+                name: "navigate_up",
+                description: "Go back one level up in the folder structure (useful for 'closing' a folder).",
+                parameters: { type: "object", properties: {} }
+              },
+              {
+                name: "braindump",
+                description: "Process a messy brain dump of ideas and organize them into structured files within a new folder.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    rawText: { type: "string", description: "The messy text/ideas to organize" },
+                    suggestedFolderName: { type: "string", description: "Name for the new folder to contain the structured ideas" }
+                  },
+                  required: ["rawText"]
+                }
+              },
+              {
+                name: "delete_item",
+                description: "Delete a file or folder. IMPORTANT: You MUST ask the user for confirmation ('Are you sure you want to delete...?') before calling this tool, unless the user has already explicitly confirmed it.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string", description: "ID of the item" },
+                    confirmed: { type: "boolean", description: "Whether the user has confirmed the deletion. Set to true only if they have." }
                   },
                   required: ["id"]
                 }
@@ -687,16 +794,29 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
 
             You can use tools to create files, folders, read files, update files, delete items, move items, rename, or open items.
+            IMPORTANT:
+            1. DO NOT ask for permission for basic tasks. Be intelligent and self-directed. Just execute what the user is asking.
+            2. To read a file (including threads, social media scripts, etc.), use \`read_file\`. You MUST read the content before summarizing or suggesting edits.
+            3. To move a file/folder, use \`move_item\`. To move to root, set parentId to null or "root". To navigate to the workspace homepage, use \`go_to_root\`.
+            4. To open a file/folder in the UI, use \`open_item\` with the ID. 
+            5. To close the currently open file, use \`close_file\`. To "close" a folder (navigate out), use \`navigate_up\` or \`go_to_root\`.
+            6. To rename without changing content, use \`rename_item\`.
+            7. For deletions, ALWAYS ask for confirmation first unless they already confirmed.
+            8. Use \`analyze_workspace\` to give brand recommendations or overview of the project.
+            9. All items (scripts, brainstorms, threads) are files.
+            10. Always describe what you did or are about to do in your final text response.
+            
             Alternatively, you can also output raw commands perfectly formatted in your response text to execute them, e.g.:
             command: create_file --name="filename.txt" --folder="folderNameOrId" --content="your content\\nhere"
             command: move_item --id="itemId" --parent="folderIdOrNull"
             command: rename_item --id="itemId" --name="new name"
             command: open_item --id="itemId"
-            
-            IMPORTANT:
-            1. DO NOT ask for permission for basic tasks. Be intelligent and self-directed. Just execute what the user is asking.
-            2. If you need to know what a file contains, use \`read_file\`. NEVER use \`update_file\` to read a file, and do not update files unless the user explicitly requests an update.
-            3. Always describe what you did or are about to do in your final text response.`
+            command: close_file
+            command: go_to_root
+            command: delete_item --id="itemId" --confirmed=true
+            command: duplicate_item --id="itemId"
+            command: search --query="keyword"
+            `
           });
 
           const history = currentMessages.slice(0, -1).map(m => ({
@@ -751,8 +871,52 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                   await onUpdateFile(id, { content });
                   callResponse = { success: true };
                 } else if (call.name === "delete_item") {
+                  const { id, confirmed } = call.args;
+                  if (confirmed === true || confirmed === "true") {
+                    await onDeleteFile(id);
+                    callResponse = { success: true };
+                  } else {
+                    callResponse = { error: "Action cancelled. Deletion requires confirmation." };
+                  }
+                } else if (call.name === "duplicate_item") {
                   const { id } = call.args;
-                  await onDeleteFile(id);
+                  const original = files.find(f => f.id === id);
+                  if (original) {
+                    const newId = await onCreateFile(`${original.name} (Copy)`, original.parentId, original.content, original.type);
+                    callResponse = { success: true, newId };
+                  } else {
+                    callResponse = { error: "Item not found" };
+                  }
+                } else if (call.name === "search_content") {
+                  const { query } = call.args;
+                  const results = files.filter(f => 
+                    f.name.toLowerCase().includes(query.toLowerCase()) || 
+                    (f.content && f.content.toLowerCase().includes(query.toLowerCase()))
+                  );
+                  callResponse = { success: true, matchCount: results.length, results: results.map(r => ({ id: r.id, name: r.name, type: r.type })) };
+                } else if (call.name === "analyze_workspace") {
+                  callResponse = { 
+                    success: true, 
+                    summary: `Workspace has ${files.length} items. Total files: ${files.filter(f => f.type !== 'folder').length}, total folders: ${files.filter(f => f.type === 'folder').length}.`,
+                    items: files.map(f => ({ name: f.name, type: f.type, folder: f.parentId || 'root' }))
+                  };
+                } else if (call.name === "braindump") {
+                  const { rawText, suggestedFolderName } = call.args;
+                  const folderId = await onCreateFolder(suggestedFolderName || "Organized Ideas", currentFolderId);
+                  // We'll create one main file for now, the AI can then follow up with more if it wants
+                  await onCreateFile("Organized Brain Dump", folderId as string, rawText, "brainstorm");
+                  callResponse = { success: true, folderId, message: "Folder created and ideas deposited. You can now split these into individual files." };
+                } else if (call.name === "close_file") {
+                  onOpenFile(null as any);
+                  callResponse = { success: true };
+                } else if (call.name === "go_to_root") {
+                  onNavigate(null);
+                  callResponse = { success: true };
+                } else if (call.name === "navigate_up") {
+                  if (currentFolderId) {
+                    const currentFolder = files.find(f => f.id === currentFolderId);
+                    onNavigate(currentFolder?.parentId || null);
+                  }
                   callResponse = { success: true };
                 } else if (call.name === "move_item") {
                   const { id, parentId } = call.args;
@@ -866,55 +1030,139 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       let currentAiText = "";
 
       const sessionPromise = (liveAI as any).live.connect({
-        model: "models/gemini-2.0-flash-exp",
+        model: "gemini-3.1-flash-live-preview",
         config: {
           systemInstruction: {
             parts: [{ text: `You are Brandable's AI Copilot. You are in a live voice session.
             Current context: User is in folder path: /${currentPath.join("/")}.
             Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
 
-            You can use tools to create files, folders, read files, update files, delete items, move items, rename, or open items.
-            Alternatively, you can also speak raw commands perfectly formatted in your response text to execute them, e.g.:
-            command: create_file --name="filename.txt" --folder="folderNameOrId" --content="your content\\nhere"
-            command: move_item --id="itemId" --parent="folderIdOrNull"
-            command: rename_item --id="itemId" --name="new name"
-            command: open_item --id="itemId"
-
-            Always provide a clear and concise text transcription of your full response including the commands.` }]
+            You can use tools to create files, folders, read files, update, delete, rename, move, duplicate, search, analyze, navigate out, and open items.
+            IMPORTANT:
+            1. DO NOT ask for permission for basic tasks. Be intelligent and self-directed. Just execute what the user is asking.
+            2. If you need to know what a file contains, use \`read_file\`.
+            3. To open a file/folder in the UI, use \`open_item\`.
+            4. To close a file or folder, use \`close_file\` or \`go_to_root\` / \`navigate_up\`.
+            5. For deletions, ALWAYS ask for confirmation first unless they already confirmed.
+            6. Provide a clear and concise text transcription of your full response.` }]
           },
           tools: [{
             functionDeclarations: [
               {
-                name: "create_file", description: "Create a new file.",
-                parameters: { type: "object", properties: { name: { type: "string" }, folderId: { type: "string" }, content: { type: "string" }, type: { type: "string" } }, required: ["name", "content"] }
+                name: "create_file",
+                description: "Create a new file.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    folderId: { type: "string" },
+                    content: { type: "string" },
+                    type: { type: "string" }
+                  }, required: ["name", "content"]
+                }
               },
               {
-                name: "create_folder", description: "Create a new folder.",
-                parameters: { type: "object", properties: { name: { type: "string" }, parentId: { type: "string" } }, required: ["name"] }
+                name: "create_folder",
+                description: "Create a new folder.",
+                parameters: {
+                  type: "object",
+                  properties: { name: { type: "string" }, parentId: { type: "string" } }, required: ["name"]
+                }
               },
               {
-                name: "update_file", description: "Update an existing file.",
-                parameters: { type: "object", properties: { id: { type: "string" }, content: { type: "string" } }, required: ["id", "content"] }
+                name: "update_file",
+                description: "Update an existing file.",
+                parameters: {
+                  type: "object",
+                  properties: { id: { type: "string" }, content: { type: "string" } }, required: ["id", "content"]
+                }
               },
               {
-                name: "read_file", description: "Reads the content of an existing file.",
-                parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"] }
+                name: "read_file",
+                description: "Reads the content of an existing file.",
+                parameters: {
+                  type: "object",
+                  properties: { id: { type: "string" } }, required: ["id"]
+                }
               },
               {
-                name: "delete_item", description: "Delete a file or folder.",
-                parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"] }
+                name: "delete_item",
+                description: "Delete a file or folder. Requires confirmed=true.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string" },
+                    confirmed: { type: "boolean" }
+                  }, required: ["id"]
+                }
               },
               {
-                name: "rename_item", description: "Rename a file or folder.",
-                parameters: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } }, required: ["id", "name"] }
+                name: "rename_item",
+                description: "Rename a file or folder.",
+                parameters: {
+                  type: "object",
+                  properties: { id: { type: "string" }, name: { type: "string" } }, required: ["id", "name"]
+                }
               },
               {
-                name: "move_item", description: "Move a file or folder to a new parent.",
-                parameters: { type: "object", properties: { id: { type: "string" }, parentId: { type: "string" } }, required: ["id"] }
+                name: "duplicate_item",
+                description: "Duplicate an existing file or folder.",
+                parameters: {
+                  type: "object",
+                  properties: { id: { type: "string" } }, required: ["id"]
+                }
               },
               {
-                name: "open_item", description: "Open a file or folder in UI.",
-                parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"] }
+                name: "search_content",
+                description: "Search for text within files.",
+                parameters: {
+                  type: "object",
+                  properties: { query: { type: "string" } }, required: ["query"]
+                }
+              },
+              {
+                name: "close_file",
+                description: "Close the currently open file preview.",
+                parameters: { type: "object", properties: {} }
+              },
+              {
+                name: "go_to_root",
+                description: "Navigate to the root level.",
+                parameters: { type: "object", properties: {} }
+              },
+              {
+                name: "navigate_up",
+                description: "Go back one level up in the folder structure.",
+                parameters: { type: "object", properties: {} }
+              },
+              {
+                name: "analyze_workspace",
+                description: "Analyze workspace structure.",
+                parameters: { type: "object", properties: {} }
+              },
+              {
+                name: "braindump",
+                description: "Organize messy ideas into structured files.",
+                parameters: {
+                  type: "object",
+                  properties: { rawText: { type: "string" }, suggestedFolderName: { type: "string" } }, required: ["rawText"]
+                }
+              },
+              {
+                name: "move_item",
+                description: "Move a file or folder.",
+                parameters: {
+                  type: "object",
+                  properties: { id: { type: "string" }, parentId: { type: "string" } }, required: ["id"]
+                }
+              },
+              {
+                name: "open_item",
+                description: "Open a file or folder in UI.",
+                parameters: {
+                  type: "object",
+                  properties: { id: { type: "string" } }, required: ["id"]
+                }
               }
             ]
           }],
@@ -932,12 +1180,14 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
         callbacks: {
           onopen: () => {
             console.log("Live session opened");
+            setToolExecutionStatus(null);
           },
           onmessage: async (message: any) => {
+            // Handle tool calls in live session
             if (message.toolCall?.functionCalls) {
               const functionResponses: any[] = [];
               for (const call of message.toolCall.functionCalls) {
-                  setToolExecutionStatus(`Executing task: ${call.name.replace('_', ' ')}...`);
+                  setToolExecutionStatus(`Executing ${call.name.replace('_', ' ')}...`);
                   let callResponse: any = { error: "Unknown error" };
                   try {
                       if (call.name === "create_file") {
@@ -961,9 +1211,48 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                               callResponse = { error: "File not found" };
                           }
                       } else if (call.name === "delete_item") {
+                          const { id, confirmed } = call.args;
+                          if (confirmed === true || confirmed === "true") {
+                            await onDeleteFile(id);
+                            callResponse = { success: true };
+                          } else {
+                            callResponse = { error: "Deletion requires confirmation." };
+                          }
+                      } else if (call.name === "duplicate_item") {
                           const { id } = call.args;
-                          await onDeleteFile(id);
-                          callResponse = { success: true };
+                          const original = files.find(f => f.id === id);
+                          if (original) {
+                              const newId = await onCreateFile(`${original.name} (Copy)`, original.parentId, original.content, original.type);
+                              callResponse = { success: true, id: newId };
+                          } else {
+                              callResponse = { error: "Item not found" };
+                          }
+                      } else if (call.name === "search_content") {
+                          const { query } = call.args;
+                          const results = files.filter(f => 
+                              f.name.toLowerCase().includes(query.toLowerCase()) || 
+                              (f.content && f.content.toLowerCase().includes(query.toLowerCase()))
+                          );
+                          callResponse = { success: true, results: results.map(r => ({ id: r.id, name: r.name })) };
+                      } else if (call.name === "analyze_workspace") {
+                          callResponse = { success: true, summary: `Workspace has ${files.length} items.` };
+                      } else if (call.name === "braindump") {
+                          const { rawText, suggestedFolderName } = call.args;
+                          const folderId = await onCreateFolder(suggestedFolderName || "Organized Ideas", currentFolderId);
+                          await onCreateFile("Organized Ideas", folderId as string, rawText, "brainstorm");
+                          callResponse = { success: true, folderId };
+                      } else if (call.name === "close_file") {
+                           onOpenFile(null as any);
+                           callResponse = { success: true };
+                      } else if (call.name === "go_to_root") {
+                           onNavigate(null);
+                           callResponse = { success: true };
+                      } else if (call.name === "navigate_up") {
+                           if (currentFolderId) {
+                               const cf = files.find(f => f.id === currentFolderId);
+                               onNavigate(cf?.parentId || null);
+                           }
+                           callResponse = { success: true };
                       } else if (call.name === "move_item") {
                           const { id, parentId } = call.args;
                           const newParent = parentId === "root" || parentId === "null" ? null : parentId;
@@ -994,15 +1283,17 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                       response: callResponse
                   });
               }
-              if (liveSessionRef.current.sendToolResponse) {
-                liveSessionRef.current.sendToolResponse({ functionResponses });
-              } else if (liveSessionRef.current.send) {
-                liveSessionRef.current.send({ toolResponse: { functionResponses } });
-              }
               setToolExecutionStatus(null);
+              if (liveSessionRef.current) {
+                if (liveSessionRef.current.sendToolResponse) {
+                   liveSessionRef.current.sendToolResponse({ functionResponses });
+                } else {
+                   liveSessionRef.current.send({ toolResponse: { functionResponses } });
+                }
+              }
             }
 
-            // Debug refinement: Only update when we have output transcription
+            // Sync transcription to message bubble
             if (message.serverContent?.outputTranscription && message.serverContent.outputTranscription.text) {
               console.log("Live transcription message received:", message.serverContent.outputTranscription.text);
               

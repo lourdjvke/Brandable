@@ -4,17 +4,18 @@ import { Mic, MicOff, Loader2, X, Brain, Waves, Play, Square } from "lucide-reac
 import { GoogleGenAI as LiveGenAI } from "@google/genai";
 import { cn } from "@/src/lib/utils";
 import { useNotifications } from "./NotificationSystem";
+import { FileItem, FileType } from "@/src/types";
 
 interface VoiceAssistantProps {
-  files: any[];
+  files: FileItem[];
   currentPath: string[];
   onNavigate: (folderId: string | null) => void;
   onFilter: (query: string | null) => void;
-  onOpenFile: (file: any) => void;
-  onUpdateFile: (id: string, updates: any) => Promise<void>;
+  onOpenFile: (file: FileItem) => void;
+  onUpdateFile: (id: string, updates: Partial<FileItem>) => Promise<void>;
   onDeleteFile: (id: string) => Promise<void>;
-  onCreateFolder: (name: string, parentId: string | null) => Promise<string | void>;
-  onCreateFile: (name: string, folderId: string | null, content?: string) => Promise<string | void>;
+  onCreateFolder: (name: string, parentId: string | null) => Promise<string | undefined>;
+  onCreateFile: (name: string, folderId: string | null, content?: string, type?: FileType) => Promise<string | undefined>;
   currentFolderId: string | null;
   currentSessionId: string | null;
   onLogAction: (msg: string, isSilent?: boolean, role?: 'user' | 'assistant' | 'system') => Promise<void>;
@@ -141,21 +142,31 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
       };
 
       const sessionPromise = (liveAI as any).live.connect({
-        model: "models/gemini-2.0-flash-exp",
+        model: "gemini-3.1-flash-live-preview",
         config: {
           systemInstruction: {
             parts: [{ text: `You are Brandable's AI Copilot. You are in a live voice session.
             Current context: User is in folder path: /${currentPath.join("/")}.
             Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
 
-            You can use tools to create files, folders, read files, update, and delete items. 
-            Alternatively, you can also speak raw commands perfectly formatted in your response text to execute them, e.g.:
-            command: create_file --name="filename.txt" --folder="folderNameOrId" --content="your content\\nhere"
-            
+            You can use tools to create files, folders, read files, update, delete, rename, move, duplicate, search, analyze, and open items. 
             IMPORTANT:
             1. DO NOT ask for permission for basic tasks. Be intelligent and self-directed. Just execute what the user is asking.
-            2. If you need to know what a file contains, use \`read_file\`. NEVER use \`update_file\` to read a file, and do not update files unless the user explicitly requests an update.
-            3. Always describe what you did or are about to do in your final text transcription.` }]
+            2. To read a file (including threads, social media scripts, etc.), use \`read_file\`. You MUST read the content before summarizing or suggesting edits.
+            3. To open a file or folder in the UI, use \`open_item\`. To close a file, use \`close_file\`. To "close" a folder, use \`navigate_up\` or \`go_to_root\`.
+            4. To rename without changing content, use \`rename_item\`.
+            5. To move an item, use \`move_item\`. To move to root, set parentId to null or "root". To go to the homepage/root workspace, use \`go_to_root\`.
+            6. For deletions, ALWAYS ask for confirmation first unless they already confirmed.
+            7. All items (scripts, brainstorms, threads) are files.
+            8. Provide a clear and concise text transcription of your full response including the commands.
+            
+            Alternatively, you can also output raw commands perfectly formatted in your response text to execute them, e.g.:
+            command: create_file --name="filename.txt" --folder="folderNameOrId" --content="your content\nhere"
+            command: move_item --id="itemId" --parent="folderIdOrNull"
+            command: delete_item --id="itemId" --confirmed=true
+            command: duplicate_item --id="itemId"
+            command: search --query="keyword"
+            ` }]
           },
           tools: [{
             functionDeclarations: [
@@ -198,10 +209,10 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
               },
               {
                 name: "delete_item",
-                description: "Delete a file or folder.",
+                description: "Delete a file or folder. Requires confirmed=true.",
                 parameters: {
                   type: "object",
-                  properties: { id: { type: "string" } }, required: ["id"]
+                  properties: { id: { type: "string" }, confirmed: { type: "boolean" } }, required: ["id"]
                 }
               },
               {
@@ -210,6 +221,50 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
                 parameters: {
                   type: "object",
                   properties: { id: { type: "string" }, name: { type: "string" } }, required: ["id", "name"]
+                }
+              },
+              {
+                name: "duplicate_item",
+                description: "Duplicate an existing file or folder.",
+                parameters: {
+                   type: "object",
+                   properties: { id: { type: "string" } }, required: ["id"]
+                }
+              },
+              {
+                name: "search_content",
+                description: "Search for text within files.",
+                parameters: {
+                   type: "object",
+                   properties: { query: { type: "string" } }, required: ["query"]
+                }
+              },
+              {
+                name: "close_file",
+                description: "Close the currently open file preview.",
+                parameters: { type: "object", properties: {} }
+              },
+              {
+                name: "go_to_root",
+                description: "Navigate to the root level.",
+                parameters: { type: "object", properties: {} }
+              },
+              {
+                name: "navigate_up",
+                description: "Go back one level up in the folder structure.",
+                parameters: { type: "object", properties: {} }
+              },
+              {
+                name: "analyze_workspace",
+                description: "Analyze workspace structure.",
+                parameters: { type: "object", properties: {} }
+              },
+              {
+                name: "braindump",
+                description: "Organize messy ideas into structured files.",
+                parameters: {
+                   type: "object",
+                   properties: { rawText: { type: "string" }, suggestedFolderName: { type: "string" } }, required: ["rawText"]
                 }
               },
               {
@@ -275,8 +330,47 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
                               callResponse = { error: "File not found" };
                           }
                       } else if (call.name === "delete_item") {
+                          const { id, confirmed } = call.args;
+                          if (confirmed === true || confirmed === "true" || confirmed === 1) {
+                            await onDeleteFile(id);
+                            callResponse = { success: true };
+                          } else {
+                            callResponse = { error: "Deletion requires confirmation. Ask user first." };
+                          }
+                      } else if (call.name === "duplicate_item") {
                           const { id } = call.args;
-                          await onDeleteFile(id);
+                          const original = files.find(f => f.id === id);
+                          if (original) {
+                              const newId = await onCreateFile(`${original.name} (Copy)`, original.parentId, original.content, original.type);
+                              callResponse = { success: true, id: newId };
+                          } else {
+                              callResponse = { error: "File not found" };
+                          }
+                      } else if (call.name === "search_content") {
+                          const { query } = call.args;
+                          const results = files.filter(f => 
+                              f.name.toLowerCase().includes(query.toLowerCase()) || 
+                              (f.content && f.content.toLowerCase().includes(query.toLowerCase()))
+                          );
+                          callResponse = { success: true, results: results.map(r => ({ id: r.id, name: r.name, type: r.type })) };
+                      } else if (call.name === "analyze_workspace") {
+                          callResponse = { success: true, summary: "Workspace has " + files.length + " items." };
+                      } else if (call.name === "braindump") {
+                          const { rawText, suggestedFolderName } = call.args;
+                          const folderId = await onCreateFolder(suggestedFolderName || "Organized Ideas", currentFolderId);
+                          await onCreateFile("Organized Ideas Content", folderId as string, rawText, "brainstorm");
+                          callResponse = { success: true, folderId };
+                      } else if (call.name === "close_file") {
+                          onOpenFile(null as any);
+                          callResponse = { success: true };
+                      } else if (call.name === "go_to_root") {
+                          onNavigate(null);
+                          callResponse = { success: true };
+                      } else if (call.name === "navigate_up") {
+                          if (currentFolderId) {
+                              const cf = files.find(f => f.id === currentFolderId);
+                              onNavigate(cf?.parentId || null);
+                          }
                           callResponse = { success: true };
                       } else if (call.name === "move_item") {
                           const { id, parentId } = call.args;
@@ -315,7 +409,7 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
               }
             }
 
-            // Check for audio output
+            // Check for audio output in model turn
             if (message.serverContent?.modelTurn?.parts) {
                 for (const part of message.serverContent.modelTurn.parts) {
                     if (part.inlineData && part.inlineData.data) {
@@ -327,17 +421,20 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
                 }
             }
 
-            // Capture user's input transcription
-            if (message.serverContent?.outputTranscription && message.serverContent.outputTranscription.text) {
-                currentUserTextRef.current += message.serverContent.outputTranscription.text;
-                // For user, log immediately or on turnComplete? 
-                // AICopilot logs it immediately.
-                onLogAction(message.serverContent.outputTranscription.text, true, 'user');
+            // Also check for audio output in model transcript turn if needed
+            if (!message.serverContent?.modelTurn?.parts && message.serverContent?.inlineData?.data) {
+                handleAudioOutput(message.serverContent.inlineData.data);
             }
 
-            // Capture model's output transcription
-            if (message.serverContent?.outputAudioTranscription?.text) {
-                currentAiTextRef.current += message.serverContent.outputAudioTranscription.text;
+            // Capture model's output transcription (what the AI is saying)
+            if (message.serverContent?.outputTranscription && message.serverContent.outputTranscription.text) {
+                currentAiTextRef.current += message.serverContent.outputTranscription.text;
+            }
+            
+            // Capture user's input transcription (what the user said)
+            if (message.serverContent?.inputAudioTranscription && message.serverContent.inputAudioTranscription.text) {
+                currentUserTextRef.current += message.serverContent.inputAudioTranscription.text;
+                onLogAction(message.serverContent.inputAudioTranscription.text, true, 'user');
             }
 
             // Check for completed turn
