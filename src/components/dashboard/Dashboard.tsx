@@ -388,6 +388,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
             setCurrentFolderId(id);
             if (window.innerWidth < 768) setIsCopilotOpen(false);
           }}
+          onOpenFile={setSelectedFile}
           onOpenSettings={() => setActiveTab("settings")}
           onCreateFile={handleCreateFile}
           onUpdateFile={handleUpdateFile}

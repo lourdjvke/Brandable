@@ -203,6 +203,30 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
                   type: "object",
                   properties: { id: { type: "string" } }, required: ["id"]
                 }
+              },
+              {
+                name: "rename_item",
+                description: "Rename a file or folder.",
+                parameters: {
+                  type: "object",
+                  properties: { id: { type: "string" }, name: { type: "string" } }, required: ["id", "name"]
+                }
+              },
+              {
+                name: "move_item",
+                description: "Move a file or folder to a new parent.",
+                parameters: {
+                  type: "object",
+                  properties: { id: { type: "string" }, parentId: { type: "string" } }, required: ["id"]
+                }
+              },
+              {
+                name: "open_item",
+                description: "Open a file or folder in UI.",
+                parameters: {
+                  type: "object",
+                  properties: { id: { type: "string" } }, required: ["id"]
+                }
               }
             ]
           }],
@@ -254,6 +278,25 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
                           const { id } = call.args;
                           await onDeleteFile(id);
                           callResponse = { success: true };
+                      } else if (call.name === "move_item") {
+                          const { id, parentId } = call.args;
+                          const newParent = parentId === "root" || parentId === "null" ? null : parentId;
+                          await onUpdateFile(id, { parentId: newParent });
+                          callResponse = { success: true };
+                      } else if (call.name === "rename_item") {
+                          const { id, name } = call.args;
+                          await onUpdateFile(id, { name });
+                          callResponse = { success: true };
+                      } else if (call.name === "open_item") {
+                          const { id } = call.args;
+                          const file = files.find(f => f.id === id);
+                          if (file) {
+                              if (file.type === "folder") onNavigate(file.id);
+                              else onOpenFile(file);
+                              callResponse = { success: true };
+                          } else {
+                              callResponse = { error: "File not found" };
+                          }
                       }
                   } catch (e: any) {
                       console.error("Tool execution failed", e);

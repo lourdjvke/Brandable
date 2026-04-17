@@ -15,6 +15,7 @@ interface AICopilotProps {
   currentFolderId: string | null;
   files: FileItem[];
   onNavigate: (folderId: string | null) => void;
+  onOpenFile: (file: FileItem) => void;
   onOpenSettings: () => void;
   sessionId: string | null;
   apiKey: string;
@@ -44,7 +45,11 @@ function MessageBubble({ msg, viewingImage, setViewingImage }: { msg: ChatMessag
                         trimmed.startsWith('create_file') || 
                         trimmed.startsWith('create_folder') || 
                         trimmed.startsWith('update_file') || 
-                        trimmed.startsWith('delete_item');
+                        trimmed.startsWith('delete_item') ||
+                        trimmed.startsWith('read_file') ||
+                        trimmed.startsWith('move_item') ||
+                        trimmed.startsWith('rename_item') ||
+                        trimmed.startsWith('open_item');
 
       if (isCommand) {
         return (
@@ -55,7 +60,7 @@ function MessageBubble({ msg, viewingImage, setViewingImage }: { msg: ChatMessag
             >
               <div className="flex items-center gap-2 overflow-hidden">
                 <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">AI Action</span>
+                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">CMD</span>
                 <span className={cn("text-xs font-mono text-neutral-600 truncate transition-all", !isExpanded && "max-w-[200px]")}>
                   {trimmed.replace(/^command:\s*/, '')}
                 </span>
@@ -192,7 +197,10 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                  t.startsWith("create_folder") || 
                  t.startsWith("update_file") || 
                  t.startsWith("delete_item") ||
-                 t.startsWith("read_file");
+                 t.startsWith("read_file") ||
+                 t.startsWith("move_item") ||
+                 t.startsWith("rename_item") ||
+                 t.startsWith("open_item");
         }) || [];
         
         if (msg.role === 'assistant' && 
@@ -226,9 +234,12 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                 else if (fileName.includes("brainstorm")) fileType = "brainstorm";
 
                 let folderId = currentFolderId;
-                if (folderNameOrId && folderNameOrId !== "null" && folderNameOrId !== "undefined") {
+                if (folderNameOrId && folderNameOrId !== "null" && folderNameOrId !== "undefined" && folderNameOrId !== "root") {
                   const existingFolder = files.find(f => f.type === 'folder' && (f.id === folderNameOrId || f.name.toLowerCase() === folderNameOrId.toLowerCase()));
                   if (existingFolder) folderId = existingFolder.id;
+                  else folderId = folderNameOrId;
+                } else if (folderNameOrId === "root" || folderNameOrId === "null") {
+                  folderId = null;
                 }
 
                 await onCreateFile(fileName, folderId, fileContent, fileType);
@@ -237,9 +248,12 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                 const parentNameOrId = parseCommandArg(content, "parent");
                 
                 let parentId = currentFolderId;
-                if (parentNameOrId && parentNameOrId !== "null" && parentNameOrId !== "undefined") {
+                if (parentNameOrId && parentNameOrId !== "null" && parentNameOrId !== "undefined" && parentNameOrId !== "root") {
                   const existingParent = files.find(f => f.type === 'folder' && (f.id === parentNameOrId || f.name.toLowerCase() === parentNameOrId.toLowerCase()));
                   if (existingParent) parentId = existingParent.id;
+                  else parentId = parentNameOrId;
+                } else if (parentNameOrId === "root" || parentNameOrId === "null") {
+                  parentId = null;
                 }
 
                 await onCreateFolder(folderName, parentId);
@@ -253,6 +267,35 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               } else if (content.includes("delete_item")) {
                 const id = parseCommandArg(content, "id");
                 if (id) await onDeleteFile(id);
+              } else if (content.includes("move_item")) {
+                const id = parseCommandArg(content, "id");
+                const parentNameOrId = parseCommandArg(content, "parent");
+                if (id) {
+                    let parentId = currentFolderId;
+                    if (parentNameOrId && parentNameOrId !== "null" && parentNameOrId !== "undefined" && parentNameOrId !== "root") {
+                      const existingParent = files.find(f => f.type === 'folder' && (f.id === parentNameOrId || f.name.toLowerCase() === parentNameOrId.toLowerCase()));
+                      if (existingParent) parentId = existingParent.id;
+                      else parentId = parentNameOrId;
+                    } else if (parentNameOrId === "root" || parentNameOrId === "null") {
+                      parentId = null;
+                    }
+                    await onUpdateFile(id, { parentId });
+                }
+              } else if (content.includes("rename_item")) {
+                const id = parseCommandArg(content, "id");
+                const name = parseCommandArg(content, "name");
+                if (id && name) {
+                    await onUpdateFile(id, { name });
+                }
+              } else if (content.includes("open_item")) {
+                const id = parseCommandArg(content, "id");
+                if (id) {
+                    const file = files.find(f => f.id === id);
+                    if (file) {
+                        if (file.type === "folder") onNavigate(file.id);
+                        else onOpenFile(file);
+                    }
+                }
               }
             }
 
@@ -597,6 +640,41 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                   },
                   required: ["id"]
                 }
+              },
+              {
+                name: "rename_item",
+                description: "Rename a file or folder without changing its content.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string", description: "ID of the item" },
+                    name: { type: "string", description: "New name" }
+                  },
+                  required: ["id", "name"]
+                }
+              },
+              {
+                name: "move_item",
+                description: "Move a file or folder to a new parent folder. Use null or 'root' to move to root.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string", description: "ID of the item" },
+                    parentId: { type: "string", description: "ID of the new parent folder, or null" }
+                  },
+                  required: ["id"]
+                }
+              },
+              {
+                name: "open_item",
+                description: "Open a file or folder in the UI (navigates into it).",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    id: { type: "string", description: "ID of the item to open" }
+                  },
+                  required: ["id"]
+                }
               }
             ]
           }];
@@ -608,9 +686,12 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             Current context: User is in folder path: /${currentPath.join("/")}.
             Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
 
-            You can use tools to create files, folders, read files, update files, and delete items.
+            You can use tools to create files, folders, read files, update files, delete items, move items, rename, or open items.
             Alternatively, you can also output raw commands perfectly formatted in your response text to execute them, e.g.:
             command: create_file --name="filename.txt" --folder="folderNameOrId" --content="your content\\nhere"
+            command: move_item --id="itemId" --parent="folderIdOrNull"
+            command: rename_item --id="itemId" --name="new name"
+            command: open_item --id="itemId"
             
             IMPORTANT:
             1. DO NOT ask for permission for basic tasks. Be intelligent and self-directed. Just execute what the user is asking.
@@ -673,6 +754,25 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                   const { id } = call.args;
                   await onDeleteFile(id);
                   callResponse = { success: true };
+                } else if (call.name === "move_item") {
+                  const { id, parentId } = call.args;
+                  const newParent = parentId === "root" || parentId === "null" ? null : parentId;
+                  await onUpdateFile(id, { parentId: newParent });
+                  callResponse = { success: true };
+                } else if (call.name === "rename_item") {
+                  const { id, name } = call.args;
+                  await onUpdateFile(id, { name });
+                  callResponse = { success: true };
+                } else if (call.name === "open_item") {
+                  const { id } = call.args;
+                  const file = files.find(f => f.id === id);
+                  if (file) {
+                    if (file.type === "folder") onNavigate(file.id);
+                    else onOpenFile(file);
+                    callResponse = { success: true };
+                  } else {
+                    callResponse = { error: "File not found" };
+                  }
                 } else {
                   callResponse = { error: "Unknown tool" };
                 }
