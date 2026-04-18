@@ -41,6 +41,12 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
   imageUrls?: string[];
+  linkMetadata?: {
+    url: string;
+    title: string;
+    description: string;
+    image?: string;
+  }[];
   createdAt: number;
   isSilent?: boolean;
 }

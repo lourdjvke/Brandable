@@ -12,36 +12,34 @@ const cleanText = (text: string) => {
   return text.replace(/\*\*/g, '').replace(/#/g, '').trim().substring(0, 40) + (text.length > 40 ? '...' : '');
 };
 
-interface LinkMetadata {
-  title?: string;
-  description?: string;
-  image?: string;
+interface MessageLinkMetadata {
   url: string;
+  title: string;
+  description: string;
+  image?: string;
 }
 
-async function fetchUrlMetadata(url: string): Promise<LinkMetadata> {
+async function fetchUrlMetadata(url: string): Promise<MessageLinkMetadata> {
   try {
-    const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+    const res = await fetch("/api/link-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url })
+    });
     const data = await res.json();
-    const html = data.contents;
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, "text/html");
-    
-    const title = doc.querySelector("title")?.innerText || 
-                 doc.querySelector('meta[property="og:title"]')?.getAttribute("content") || 
-                 url;
-    const description = doc.querySelector('meta[name="description"]')?.getAttribute("content") || 
-                       doc.querySelector('meta[property="og:description"]')?.getAttribute("content") || "";
-    const image = doc.querySelector('meta[property="og:image"]')?.getAttribute("content") || "";
-    
-    return { title, description, image, url };
+    return {
+      url,
+      title: data.title || "N/A",
+      description: data.description || "N/A",
+      image: data.image
+    };
   } catch (err) {
-    return { url };
+    return { url, title: "N/A", description: "N/A" };
   }
 }
 
 function LinkPreview({ url }: { url: string }) {
-  const [metadata, setMetadata] = useState<LinkMetadata | null>(null);
+  const [metadata, setMetadata] = useState<MessageLinkMetadata | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -101,7 +99,7 @@ function MessageBubble({
   };
 
   const extractLinks = (text: string) => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urlRegex = /((?:https?:\/\/|www\.)[^\s]+\.[a-z]{2,})/gi;
     return text.match(urlRegex) || [];
   };
 
@@ -219,11 +217,33 @@ function MessageBubble({
           )}
         </div>
 
-        {msg.role === "user" && links.length > 0 && (
+        {msg.role === "user" && (msg.linkMetadata && msg.linkMetadata.length > 0 ? (
+          <div className="mt-2 flex flex-col gap-1 max-w-[70vw] w-64 overflow-hidden self-end">
+            {msg.linkMetadata.map((meta, idx) => (
+              <div 
+                key={idx}
+                className="flex flex-col gap-2 p-3 my-2 bg-neutral-50 border border-neutral-200 rounded-lg hover:bg-neutral-100 transition-colors group no-underline max-w-full overflow-hidden"
+              >
+                <div className="flex gap-3 items-start min-w-0">
+                  {meta.image && (
+                    <img src={meta.image} alt="" className="w-16 h-16 rounded object-cover shrink-0" referrerPolicy="no-referrer" />
+                  )}
+                  <div className="flex flex-col gap-0.5 overflow-hidden min-w-0 flex-1">
+                    <span className="text-sm font-semibold text-neutral-900 truncate group-hover:text-black block">{meta.title}</span>
+                    {meta.description && <p className="text-xs text-neutral-500 line-clamp-2 leading-relaxed">{meta.description}</p>}
+                    <div className="flex items-center gap-1.5 mt-1 overflow-hidden min-w-0">
+                       <span className="text-[10px] text-neutral-400 truncate">{new URL(meta.url).hostname}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : links.length > 0 && (
           <div className="mt-2 flex flex-col gap-1 max-w-[70vw] w-64 overflow-hidden self-end">
             {links.map((link, idx) => <LinkPreview key={idx} url={link} />)}
           </div>
-        )}
+        ))}
 
         {msg.role === "assistant" && (
           <div className="mt-4 flex flex-col gap-3">
@@ -327,6 +347,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   const [toolExecutionStatus, setToolExecutionStatus] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
+  const [showModelSelector, setShowModelSelector] = useState(false);
 
   useEffect(() => {
     if (propSessionId !== undefined && propSessionId !== currentSessionId) {
@@ -335,7 +356,50 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   }, [propSessionId]);
 
   const [attachedImages, setAttachedImages] = useState<{ url: string; file: File }[]>([]);
+  const [linkPreview, setLinkPreview] = useState<any>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
+
+  const [debouncedInput, setDebouncedInput] = useState(input);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedInput(input);
+    }, 500);
+    return () => clearTimeout(handler);
+  }, [input]);
+
+  useEffect(() => {
+    // Stricter regex for clear link patterns (http/https or www)
+    const urlRegex = /((?:https?:\/\/|www\.)[^\s]+\.[a-z]{2,})/gi;
+    const match = debouncedInput.match(urlRegex);
+    let urlToFetch = match ? match[0] : null;
+    
+    // Normalize www-only links for fetching
+    if (urlToFetch && urlToFetch.toLowerCase().startsWith("www.")) {
+      urlToFetch = "https://" + urlToFetch;
+    }
+
+    if (urlToFetch && (!linkPreview || linkPreview.url !== urlToFetch)) {
+        fetch("/api/link-preview", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ url: urlToFetch })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data && !data.error && data.title && data.title !== "N/A") {
+                setLinkPreview(data);
+            } else {
+                setLinkPreview(null);
+            }
+        })
+        .catch(() => setLinkPreview(null));
+    } else if (!urlToFetch) {
+        setLinkPreview(null);
+    }
+  }, [debouncedInput, linkPreview]);
   const [lastLiveResponse, setLastLiveResponse] = useState<string>("");
   const [selectedModel, setSelectedModel] = useState<string>("gemini-3-flash-preview");
   const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -574,10 +638,10 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   }, [messages, onCreateFile, onUpdateFile, onDeleteFile, onCreateFolder, currentFolderId, currentSessionId, files]);
 
   const TEXT_MODELS = [
-    { id: "gemini-3-flash-preview", name: "Gemini 3 Flash" },
-    { id: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite" },
-    { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro" },
-    { id: "gemini-flash-latest", name: "Gemini Flash Latest" },
+    { id: "gemini-3-flash-preview", name: "Gemini 3 Flash", desc: "Latest & Fast" },
+    { id: "gemini-2.5-flash-preview", name: "Gemini 2.5 Flash", desc: "Balanced & Smart" },
+    { id: "gemini-2.5-flash-lite-preview", name: "Gemini 2.5 Flash Lite", desc: "Efficiency Focus" },
+    { id: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite", desc: "Next-gen Lightweight" },
   ];
 
   useImperativeHandle(ref, () => ({
@@ -800,17 +864,6 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
 
     const userMsgContent = sendContent;
     const imageUrls = attachedImages.map(img => img.url);
-
-    // Fetch link metadata proactively if links are present
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const urlsInMessage = userMsgContent.match(urlRegex) || [];
-    let linkMetadataSummary = "";
-    if (urlsInMessage.length > 0) {
-      const metadataResults = await Promise.all(urlsInMessage.map(u => fetchUrlMetadata(u)));
-      linkMetadataSummary = metadataResults.map(m => 
-        `[URL Context: ${m.url} | Title: ${m.title || "N/A"} | Description: ${m.description || "N/A"}]`
-      ).join("\n");
-    }
     
     const userMessage: Omit<ChatMessage, "id"> = {
       role: "user",
@@ -821,7 +874,44 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       userMessage.imageUrls = imageUrls;
     }
 
-    const currentMessages = await saveMessage(sessionId, userMessage);
+    // Optimistic UI update - now including link metadata if available during typing
+    const optimisticMessage: ChatMessage = { 
+        ...userMessage, 
+        id: "temp-" + Date.now(),
+        linkMetadata: linkPreview ? [linkPreview as MessageLinkMetadata] : undefined 
+    };
+    setMessages(prev => [...prev, optimisticMessage]);
+    setInput("");
+    setAttachedImages([]);
+    setLinkPreview(null);
+    setIsGenerating(true);
+
+    // Fetch link metadata proactively if links are present (and not already available from typing)
+    const urlRegex = /((?:https?:\/\/|www\.)[^\s]+\.[a-z]{2,})/gi;
+    const urlsInMessage = userMsgContent.match(urlRegex) || [];
+    
+    let finalMetadata: MessageLinkMetadata[] = [];
+    if (linkPreview) {
+        finalMetadata = [linkPreview as MessageLinkMetadata];
+    } else if (urlsInMessage.length > 0) {
+        finalMetadata = await Promise.all(urlsInMessage.map(u => fetchUrlMetadata(u)));
+    }
+
+    let linkMetadataSummary = "";
+    if (finalMetadata.length > 0) {
+      linkMetadataSummary = finalMetadata.map(m => 
+        `[URL Context: ${m.url} | Title: ${m.title} | Description: ${m.description}]`
+      ).join("\n");
+    }
+    
+    // Update message content with metadata for the AI call
+    const messageWithMeta: Omit<ChatMessage, "id"> = { 
+        ...userMessage, 
+        content: userMsgContent + (linkMetadataSummary ? `\n\n${linkMetadataSummary}` : ""),
+        linkMetadata: finalMetadata.length > 0 ? finalMetadata : undefined
+    };
+
+    const currentMessages = await saveMessage(sessionId, messageWithMeta);
     
     const session = sessions.find(s => s.id === sessionId);
     if (session && session.title === "New Chat") {
@@ -839,7 +929,11 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       let attempts = 0;
       let lastError = null;
       let finalResponse = null;
-      let usedModelName = selectedModel;
+      
+      // If randomizing, pick one immediately. Otherwise use the selected one.
+      let usedModelName = useRandomModel 
+        ? availableModels[Math.floor(Math.random() * availableModels.length)]
+        : selectedModel;
 
       // Prepare final content for AI including metadata summary if any
       const lastUserMsgContent = linkMetadataSummary 
@@ -848,11 +942,10 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
 
       while (attempts < 3) {
         try {
-          const currentModelName = (useRandomModel && attempts > 0) 
-            ? availableModels[Math.floor(Math.random() * availableModels.length)]
-            : usedModelName;
-          
-          usedModelName = currentModelName;
+          // On retries, if randomizing, pick a new one.
+          if (attempts > 0 && useRandomModel) {
+            usedModelName = availableModels[Math.floor(Math.random() * availableModels.length)];
+          }
 
           const functionDeclarations = [
             {
@@ -1738,7 +1831,64 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           </div>
           <div>
             <h2 className="text-sm font-bold text-neutral-900 tracking-tight">AI Copilot</h2>
-            <p className="text-[10px] font-medium text-neutral-400 uppercase tracking-widest">{isLive ? "Live Voice" : "Chat Mode"}</p>
+            <div className="relative group/model">
+              <button 
+                className="flex items-center gap-1 text-[10px] font-medium text-neutral-400 uppercase tracking-widest hover:text-black transition-colors"
+                onClick={() => !isLive && setShowModelSelector(!showModelSelector)}
+              >
+                {isLive ? "Live Voice" : (localStorage.getItem("gemini_random_model") === "true" ? "Random Mode" : "Chat Mode")}
+                {!isLive && <ChevronDown className="w-2.5 h-2.5" />}
+              </button>
+              
+              <AnimatePresence>
+                {showModelSelector && !isLive && (
+                  <>
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 z-40"
+                      onClick={() => setShowModelSelector(false)}
+                    />
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute top-full left-0 mt-2 w-48 bg-white border border-neutral-100 rounded-xl shadow-2xl z-50 overflow-hidden py-1.5"
+                    >
+                      {localStorage.getItem("gemini_random_model") === "true" && (
+                        <div className="px-4 py-2 border-b border-neutral-50 mb-1">
+                          <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Randomization Active</span>
+                        </div>
+                      )}
+                      {TEXT_MODELS.map((m) => (
+                        <button
+                          key={m.id}
+                          disabled={localStorage.getItem("gemini_random_model") === "true"}
+                          onClick={() => {
+                            setSelectedModel(m.id);
+                            setShowModelSelector(false);
+                          }}
+                          className={cn(
+                            "w-full px-4 py-2.5 text-left transition-all flex flex-col gap-0.5",
+                            selectedModel === m.id ? "bg-neutral-50" : "bg-transparent",
+                            localStorage.getItem("gemini_random_model") === "true" ? "opacity-50 grayscale cursor-not-allowed" : "hover:bg-neutral-50"
+                          )}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className={cn("text-xs font-bold", selectedModel === m.id ? "text-black" : "text-neutral-600")}>
+                              {m.name}
+                            </span>
+                            {selectedModel === m.id && <Check className="w-3 h-3 text-black" />}
+                          </div>
+                          <span className="text-[10px] text-neutral-400 font-medium">{m.desc}</span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1.5">
@@ -1967,6 +2117,17 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           >
             <ImageIcon className="w-5 h-5" />
           </button>
+          
+          {linkPreview && (
+              <div className="absolute bottom-full mb-2 inset-x-0 mx-2 bg-white border border-neutral-100 rounded-xl overflow-hidden shadow-xl p-3 flex gap-3">
+                 {linkPreview.image && <img src={linkPreview.image} className="w-16 h-16 rounded object-cover shrink-0" />}
+                 <div className="min-w-0 flex flex-col gap-0.5 justify-center">
+                    <div className="text-sm font-semibold truncate text-neutral-900">{linkPreview.title}</div>
+                    <div className="text-xs text-neutral-500 line-clamp-2 leading-relaxed">{linkPreview.description}</div>
+                    <div className="text-[10px] text-neutral-400 truncate">{linkPreview.url}</div>
+                 </div>
+              </div>
+          )}
           
           <textarea
             value={input}
