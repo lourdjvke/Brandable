@@ -240,7 +240,7 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
     onUpdate: () => setHasUnsavedChanges(true),
     editorProps: {
       attributes: {
-        class: 'prose prose-neutral max-w-none w-full outline-none font-light leading-relaxed prose-h1:font-light prose-h1:text-3xl prose-h2:font-light prose-h2:text-2xl prose-p:leading-relaxed prose-img:rounded-2xl prose-img:shadow-sm prose-img:border prose-img:border-neutral-100',
+        class: 'tiptap prose prose-neutral max-w-none w-full outline-none font-light leading-relaxed prose-img:rounded-2xl prose-img:shadow-sm prose-img:border prose-img:border-neutral-100',
       },
     },
   });
@@ -284,14 +284,14 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
     }
   };
 
-  // Auto-save logic
-  useEffect(() => {
-    if (!hasUnsavedChanges || !editor) return;
-    const timeout = setTimeout(() => {
-      handleSave();
-    }, 1500);
-    return () => clearTimeout(timeout);
-  }, [hasUnsavedChanges, name, tags, headerImage, editor]);
+  // Auto-save disabled per user request
+  // useEffect(() => {
+  //   if (!hasUnsavedChanges || !editor) return;
+  //   const timeout = setTimeout(() => {
+  //     handleSave();
+  //   }, 1500);
+  //   return () => clearTimeout(timeout);
+  // }, [hasUnsavedChanges, name, tags, headerImage, editor]);
 
   const compressImage = async (f: File): Promise<string> => {
     return new Promise((resolve) => {
