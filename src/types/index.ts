@@ -31,6 +31,7 @@ export interface FileItem {
   content?: string;
   headerImage?: string;
   color?: string;
+  isPublic?: boolean;
   createdAt: number;
   updatedAt: number;
   versions?: FileVersion[];

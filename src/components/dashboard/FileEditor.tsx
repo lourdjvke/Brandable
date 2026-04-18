@@ -5,7 +5,7 @@ import { doc, updateDoc, onSnapshot } from "firebase/firestore";
 import { 
   ArrowLeft, Save, Loader2, Edit3, MessageSquare, Twitter, 
   BrainCircuit, FileText, X, Plus, Image as ImageIcon,
-  Bold, Italic, Heading1, Heading2, List, ListOrdered, Maximize2, Quote
+  Bold, Italic, Heading1, Heading2, List, ListOrdered, Maximize2, Quote, Globe, ExternalLink
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
@@ -204,9 +204,11 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
   const [name, setName] = useState(file.name);
   const [tags, setTags] = useState<Tag[]>(file.tags || []);
   const [headerImage, setHeaderImage] = useState(file.headerImage || "");
+  const [isPublic, setIsPublic] = useState(file.isPublic || false);
   const [saving, setSaving] = useState(false);
   const [showTagMenu, setShowTagMenu] = useState(false);
   const [newTagName, setNewTagName] = useState("");
+  const [publishing, setPublishing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -252,6 +254,7 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
         if (data.name !== name) setName(data.name);
         if (JSON.stringify(data.tags) !== JSON.stringify(tags)) setTags(data.tags || []);
         if (data.headerImage !== headerImage) setHeaderImage(data.headerImage || "");
+        if (data.isPublic !== isPublic) setIsPublic(data.isPublic || false);
         
         if (data.content && data.content !== initialContent.current && !hasUnsavedChanges && editor) {
             initialContent.current = data.content;
@@ -272,6 +275,7 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
         content: htmlContent, // Save as HTML
         tags,
         headerImage,
+        isPublic,
         updatedAt: Date.now(),
         ...overrideData
       });
@@ -281,6 +285,29 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
       console.error("Error saving file:", err);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const togglePublic = async () => {
+    setPublishing(true);
+    const newValue = !isPublic;
+    try {
+      if (hasUnsavedChanges) {
+        await handleSave({ isPublic: newValue });
+      } else {
+        await updateDoc(doc(db, "files", file.id), { isPublic: newValue, updatedAt: Date.now() });
+      }
+      setIsPublic(newValue);
+      if (newValue) {
+        // Copy to clipboard
+        navigator.clipboard.writeText(`${window.location.origin}/v/${file.ownerId}/${file.id}`);
+        alert("Public link copied to clipboard!");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to toggle publish status");
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -400,8 +427,31 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {isPublic ? (
+            <div className="flex items-center bg-green-50 text-green-600 px-3 py-1.5 rounded-full text-xs font-medium mr-2">
+              <Globe className="w-3 h-3 mr-1.5" />
+              Published
+              <button 
+                onClick={(e) => { e.stopPropagation(); window.open(`/v/${file.ownerId}/${file.id}`, '_blank'); }}
+                className="ml-2 hover:text-green-800"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : null}
           <button
-            onClick={handleSave}
+            onClick={togglePublic}
+            disabled={publishing}
+            className={cn(
+              "p-2.5 rounded-full transition-all flex items-center justify-center",
+              isPublic ? "bg-neutral-100 text-neutral-600 hover:bg-neutral-200" : "bg-neutral-100 text-neutral-400 hover:bg-neutral-200 hover:text-black"
+            )}
+            title={isPublic ? "Make Private" : "Publish to Web"}
+          >
+            {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={() => handleSave()}
             disabled={saving || !hasUnsavedChanges}
             className={cn(
               "p-2.5 rounded-full transition-all flex items-center justify-center",

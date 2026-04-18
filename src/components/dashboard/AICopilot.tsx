@@ -1064,11 +1064,11 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             },
             {
               name: "search_content",
-              description: "Search for text within all files and items in the workspace.",
+              description: "Perform a deep semantic search across the entire workspace. Returns high-fidelity snippets. Use this anytime the user asks to find a concept, topic, or specific wording.",
               parameters: {
                 type: Type.OBJECT,
                 properties: {
-                  query: { type: Type.STRING, description: "The text to search for" }
+                  query: { type: Type.STRING, description: "The text or topic to search for" }
                 },
                 required: ["query"]
               }
@@ -1207,7 +1207,8 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               7. For deletions, ALWAYS ask for confirmation first unless they already confirmed.
               8. Use \`analyze_workspace\` to give brand recommendations or overview of the project.
               9. All items (scripts, brainstorms, threads) are files.
-              10. Always describe what you did or are about to do in your final text response.
+              10. Use \`search_content\` robustly. If the user asks where they wrote about X, use the tool. The tool returns matching snippets. Use those to confidently point them to the exact file.
+              11. Always describe what you did or are about to do in your final text response.
               
               Alternatively, you can also output raw commands perfectly formatted in your response text to execute them, e.g.:
               command: create_file --name="filename.txt" --folder="folderNameOrId" --content="your content\\nhere"
@@ -1289,11 +1290,19 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                   }
                 } else if (call.name === "search_content") {
                   const { query } = call.args as any;
+                  const q = query.toLowerCase();
                   const results = files.filter(f => 
-                    f.name.toLowerCase().includes(query.toLowerCase()) || 
-                    (f.content && f.content.toLowerCase().includes(query.toLowerCase()))
-                  );
-                  callResponse = { success: true, matchCount: results.length, results: results.map(r => ({ id: r.id, name: r.name, type: r.type })) };
+                    f.name.toLowerCase().includes(q) || 
+                    (f.content && f.content.toLowerCase().includes(q))
+                  ).map(f => {
+                    let snippet = "";
+                    if (f.content && f.content.toLowerCase().includes(q)) {
+                      const idx = f.content.toLowerCase().indexOf(q);
+                      snippet = "..." + f.content.substring(Math.max(0, idx - 40), Math.min(f.content.length, idx + q.length + 40)).replace(/<[^>]*>?/gm, '') + "...";
+                    }
+                    return { id: f.id, name: f.name, type: f.type, snippet };
+                  });
+                  callResponse = { success: true, matchCount: results.length, results };
                 } else if (call.name === "analyze_workspace") {
                   callResponse = { 
                     success: true, 

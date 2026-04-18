@@ -3,9 +3,10 @@ import { UserProfile } from "@/src/types";
 import { db, auth } from "@/src/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 import { signOut, updateProfile } from "firebase/auth";
-import { User, LogOut, Key, BrainCircuit, Save, Loader2, Shuffle } from "lucide-react";
+import { User, LogOut, Key, BrainCircuit, Save, Loader2, Shuffle, DownloadCloud, CheckCircle2 } from "lucide-react";
 import { motion } from "motion/react";
 import { cn } from "@/src/lib/utils";
+import { usePWA } from "@/src/hooks/usePWA";
 
 export default function SettingsView({ profile, onKeyChange }: { profile: UserProfile; onKeyChange: (key: string) => void }) {
   const [name, setName] = useState(profile.name || "");
@@ -16,6 +17,7 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
   const [randomModel, setRandomModel] = useState(localStorage.getItem("gemini_random_model") === "true");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const { needRefresh, offlineReady, updateServiceWorker } = usePWA();
 
   const handleSave = async () => {
     setSaving(true);
@@ -144,6 +146,67 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
                 />
               </button>
             </div>
+          </div>
+        </section>
+
+        {/* System / App Update Section */}
+        <section className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100 flex flex-col gap-4">
+          <div className="flex items-center gap-3 border-b border-neutral-50 pb-3">
+            <div className="w-8 h-8 rounded-xl bg-green-50 flex items-center justify-center text-green-600">
+              <DownloadCloud className="w-4 h-4" />
+            </div>
+            <h2 className="font-semibold text-sm">App Updates & Offline Status</h2>
+          </div>
+          
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col">
+               <div className="flex items-center gap-2 mb-2">
+                 {offlineReady ? (
+                   <span className="flex items-center text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                     <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> App ready for offline use
+                   </span>
+                 ) : (
+                   <span className="flex items-center text-xs font-medium text-amber-500 bg-amber-50 px-2 py-1 rounded-full">
+                     <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Caching resources for offline access...
+                   </span>
+                 )}
+               </div>
+               <p className="text-xs text-neutral-400 leading-relaxed">
+                 Brandable OS is a Progressive Web App (PWA). Once cached, everything including your file structure and content is accessible without an internet connection.
+               </p>
+            </div>
+
+            {needRefresh ? (
+              <div className="p-4 rounded-xl bg-blue-50 border border-blue-100 flex flex-col gap-3">
+                <span className="text-sm font-medium text-blue-900">A new version is available!</span>
+                <p className="text-xs text-blue-700">Click below to install the update and reload the application.</p>
+                <button
+                  onClick={() => updateServiceWorker(true)}
+                  className="bg-blue-600 text-white text-sm font-medium py-2 px-4 rounded-xl shadow-sm hover:bg-blue-700 transition"
+                >
+                  Install Update & Reload
+                </button>
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl bg-neutral-50 flex flex-col items-center justify-center gap-2">
+                <span className="text-sm font-medium text-neutral-600">You're on the latest version</span>
+                <button
+                  onClick={() => {
+                     // Check for update manually
+                     if ('serviceWorker' in navigator) {
+                       navigator.serviceWorker.ready.then(reg => {
+                         reg.update();
+                         setMessage("Checked for updates.");
+                         setTimeout(() => setMessage(""), 3000);
+                       });
+                     }
+                  }}
+                  className="text-xs font-medium text-neutral-500 hover:text-black hover:underline"
+                >
+                  Force check for updates
+                </button>
+              </div>
+            )}
           </div>
         </section>
 
