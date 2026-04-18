@@ -348,6 +348,58 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   const [isGenerating, setIsGenerating] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [showModelSelector, setShowModelSelector] = useState(false);
+  const [dynamicSuggestions, setDynamicSuggestions] = useState<string[]>([]);
+  const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
+  const [lastLiveResponse, setLastLiveResponse] = useState<string>("");
+  const [liveUserTranscript, setLiveUserTranscript] = useState<string>("");
+
+  useEffect(() => {
+    if (isLive && (liveUserTranscript || lastLiveResponse)) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [isLive, liveUserTranscript, lastLiveResponse]);
+
+  useEffect(() => {
+    // Only fetch if no messages and we have an API key
+    if (messages.length === 0 && propApiKey) {
+      const fetchSuggestions = async () => {
+        setIsSuggestionsLoading(true);
+        try {
+          const ai = new GoogleGenAI({ apiKey: propApiKey });
+          const response = await ai.models.generateContent({
+             model: "gemini-3-flash-preview",
+             contents: [{ role: "user", parts: [{ text: `Based on the following workspace context, provide exactly 3 short, creative, and specific prompt suggestions for the user. 
+             Suggestions should be max 6-8 words.
+             Current folder path: /${currentPath.join("/")}
+             Workspace files: ${JSON.stringify(files.slice(0, 15).map(f => ({ name: f.name, type: f.type })))}
+             
+             Return ONLY a JSON array of 3 strings. No markdown, no prose.`}] }],
+             config: {
+               responseMimeType: "application/json"
+             }
+          });
+          
+          const text = response.text || "[]";
+          const parsed = JSON.parse(text);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setDynamicSuggestions(parsed.slice(0, 3));
+          } else {
+            throw new Error("Invalid suggestions format");
+          }
+        } catch (err) {
+          console.error("Suggestions error:", err);
+          setDynamicSuggestions([
+            "Outline a viral video script",
+            "Generate captions for brand",
+            "Organize current folder"
+          ]);
+        } finally {
+          setIsSuggestionsLoading(false);
+        }
+      };
+      fetchSuggestions();
+    }
+  }, [messages.length, files.length, currentPath, propApiKey]);
 
   useEffect(() => {
     if (propSessionId !== undefined && propSessionId !== currentSessionId) {
@@ -400,11 +452,12 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
         setLinkPreview(null);
     }
   }, [debouncedInput, linkPreview]);
-  const [lastLiveResponse, setLastLiveResponse] = useState<string>("");
   const [selectedModel, setSelectedModel] = useState<string>("gemini-3-flash-preview");
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const processedCommands = useRef<Set<string>>(new Set());
+  const currentAiTextRef = useRef<string>("");
+  const currentUserTextRef = useRef<string>("");
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
@@ -1135,6 +1188,12 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               Current context: User is in folder path: /${currentPath.join("/")}.
               Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
 
+              CRITICAL UI KNOWLEDGE: The File Editor now uses a TipTap HTML Rich Text editor. It NO LONGER uses standard Markdown. 
+              When creating or updating files with the \`create_file\` or \`update_file\` (if exists) tools, you MUST provide valid HTML content.
+              - To add a placeholder inline image, use exactly: <img src="" />
+              - To add a Bento Gallery with 3 placeholder slots, use exactly: <div data-type="gallery" data-images='["", "", ""]'></div>
+              - Use standard HTML tags for formatting (<h1>, <p>, <strong>, <em>, <ul>, etc.) instead of Markdown.
+
               You can use tools to create files, folders, read files, update files, delete items, move items, rename, or open items.
               IMPORTANT:
               1. DO NOT ask for permission for basic tasks. Be intelligent and self-directed. Just execute what the user is asking.
@@ -1391,15 +1450,50 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       playbackContextRef.current = playbackContext;
       nextPlayTimeRef.current = playbackContext.currentTime;
 
-      let currentAiText = "";
+      currentAiTextRef.current = "";
+      currentUserTextRef.current = "";
+
+      const flushLiveTranscription = async () => {
+        const aiText = currentAiTextRef.current;
+        const userText = currentUserTextRef.current;
+        if (sessionId && (aiText || userText)) {
+          if (userText) {
+            await saveMessage(sessionId, {
+              role: "user",
+              content: userText,
+              createdAt: Date.now()
+            });
+          }
+          if (aiText) {
+            await saveMessage(sessionId, {
+              role: "assistant",
+              content: aiText,
+              createdAt: Date.now()
+            });
+          }
+          currentAiTextRef.current = "";
+          currentUserTextRef.current = "";
+          setLastLiveResponse("");
+          setLiveUserTranscript("");
+        }
+      };
 
       const sessionPromise = (liveAI as any).live.connect({
         model: "gemini-3.1-flash-live-preview",
         config: {
+          generationConfig: {
+            responseModalities: ["TEXT", "AUDIO"],
+          },
           systemInstruction: {
             parts: [{ text: `You are Brandable's AI Copilot. You are in a live voice session.
             Current context: User is in folder path: /${currentPath.join("/")}.
             Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
+            
+            CRITICAL UI KNOWLEDGE: The File Editor now uses a TipTap HTML Rich Text editor. It NO LONGER uses standard Markdown. 
+            When creating files with the \`create_file\` tool, you MUST provide valid HTML content.
+            - To add a placeholder inline image, use exactly: <img src="" />
+            - To add a Bento Gallery with 3 placeholder slots, use exactly: <div data-type="gallery" data-images='["", "", ""]'></div>
+            - Use standard HTML tags for formatting (<h1>, <p>, <strong>, <em>, <ul>, etc.) instead of Markdown.
 
             You can use tools to create files, folders, read files, update, delete, rename, move, duplicate, search, analyze, navigate out, and open items.
             IMPORTANT:
@@ -1666,12 +1760,19 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             }
 
             // Sync transcription to message bubble
-            if (message.serverContent?.outputTranscription && message.serverContent.outputTranscription.text) {
-              console.log("Live transcription message received:", message.serverContent.outputTranscription.text);
-              
-              // Accumulate words with proper spacing for the current turn
-              currentAiText = (currentAiText + " " + message.serverContent.outputTranscription.text).trim();
-              setLastLiveResponse(currentAiText);
+            const inputTranscription = message.serverContent?.inputAudioTranscription || message.serverContent?.inputTranscription;
+            const outputTranscription = message.serverContent?.outputAudioTranscription || message.serverContent?.outputTranscription;
+
+            if (inputTranscription && inputTranscription.text) {
+              // The API usually sends chunks for input transcription as well.
+              const text = inputTranscription.text;
+              currentUserTextRef.current = (currentUserTextRef.current + " " + text).trim();
+              setLiveUserTranscript(currentUserTextRef.current);
+            }
+
+            if (outputTranscription && outputTranscription.text) {
+              currentAiTextRef.current = (currentAiTextRef.current + " " + outputTranscription.text).trim();
+              setLastLiveResponse(currentAiTextRef.current);
             }
 
             if (message.serverContent?.close || message.serverContent?.goAway) {
@@ -1717,38 +1818,21 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                   }
                 }
                 if (part.text) {
-                  newText += part.text;
+                  currentAiTextRef.current += part.text;
+                  setLastLiveResponse(currentAiTextRef.current);
                 }
               }
             }
 
-            // Also capture server-transcribed text to show in the debug area if part.text isn't provided
+            // Also capture server-transcribed text
             if (message.serverContent?.outputAudioTranscription) {
               if (message.serverContent.outputAudioTranscription.text) {
-                 newText += message.serverContent.outputAudioTranscription.text;
+                // already handled above
               }
-            }
-
-            if (newText) {
-              currentAiText += newText;
-              setLastLiveResponse(currentAiText);
             }
 
             if (message.serverContent?.turnComplete) {
-              if (currentAiText.trim() && currentSessionIdRef.current) {
-                let finalContent = currentAiText.trim();
-                
-                // No longer parsing JSON here, just save the assistant message
-                finalContent = currentAiText.trim();
-                
-                await saveMessage(currentSessionIdRef.current, {
-                  role: "assistant",
-                  content: finalContent,
-                  createdAt: Date.now()
-                });
-                setLastLiveResponse(currentAiText);
-                currentAiText = "";
-              }
+              flushLiveTranscription();
             }
           },
           onclose: () => {
@@ -1799,7 +1883,29 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
     }
   };
 
-  const stopLiveSession = () => {
+  const stopLiveSession = async () => {
+    // Collect any remaining live text before shutting down
+    if (currentSessionId && (currentAiTextRef.current || currentUserTextRef.current)) {
+      if (currentUserTextRef.current) {
+        await saveMessage(currentSessionId, {
+          role: "user",
+          content: currentUserTextRef.current,
+          createdAt: Date.now()
+        });
+      }
+      if (currentAiTextRef.current) {
+        await saveMessage(currentSessionId, {
+          role: "assistant",
+          content: currentAiTextRef.current,
+          createdAt: Date.now()
+        });
+      }
+      currentAiTextRef.current = "";
+      currentUserTextRef.current = "";
+      setLastLiveResponse("");
+      setLiveUserTranscript("");
+    }
+    
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
@@ -2003,19 +2109,22 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               </p>
             </div>
             <div className="grid gap-2 w-full">
-              {[
-                "Create a folder named 'Project Alpha'",
-                "Outline a YouTube script about AI",
-                "Generate 5 IG captions for a tech startup"
-              ].map((suggestion, i) => (
-                <button 
-                  key={i}
-                  onClick={() => setInput(suggestion)}
-                  className="px-4 py-3 bg-white border border-neutral-100 rounded-2xl text-xs font-semibold text-neutral-600 hover:bg-neutral-50 hover:border-neutral-200 transition-all text-left whitespace-nowrap overflow-hidden text-ellipsis shadow-sm hover:translate-y-[-2px] active:translate-y-0"
-                >
-                  {suggestion}
-                </button>
-              ))}
+              {isSuggestionsLoading ? (
+                <div className="flex items-center justify-center gap-2 py-4">
+                  <Loader2 className="w-3 h-3 animate-spin text-neutral-400" />
+                  <span className="text-xs text-neutral-400 font-medium">Getting suggestions...</span>
+                </div>
+              ) : (
+                dynamicSuggestions.map((suggestion, i) => (
+                  <button 
+                    key={i}
+                    onClick={() => setInput(suggestion)}
+                    className="px-4 py-3 bg-neutral-50 border border-neutral-100 rounded-2xl text-xs font-semibold text-neutral-600 hover:bg-neutral-100 hover:border-neutral-200 transition-all text-left whitespace-nowrap overflow-hidden text-ellipsis hover:translate-y-[-1px] active:translate-y-0"
+                  >
+                    {suggestion}
+                  </button>
+                ))
+              )}
             </div>
           </div>
         ) : (
@@ -2029,6 +2138,40 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               onRetry={() => handleSend(msg.content)}
             />
           ))
+        )}
+
+        {isLive && (liveUserTranscript || lastLiveResponse) && (
+          <div className="space-y-8 flex flex-col">
+            {liveUserTranscript && (
+              <MessageBubble 
+                msg={{ 
+                  id: "live-user", 
+                  role: "user", 
+                  content: liveUserTranscript, 
+                  createdAt: Date.now(),
+                  isSilent: true // Use silent styling for partial voice transcription
+                }} 
+                viewingImage={null} 
+                setViewingImage={() => {}} 
+                onSpeak={() => {}} 
+                onRetry={() => {}} 
+              />
+            )}
+            {lastLiveResponse && (
+              <MessageBubble 
+                msg={{ 
+                  id: "live-ai", 
+                  role: "assistant", 
+                  content: lastLiveResponse, 
+                  createdAt: Date.now() 
+                }} 
+                viewingImage={null} 
+                setViewingImage={() => {}} 
+                onSpeak={() => {}} 
+                onRetry={() => {}} 
+              />
+            )}
+          </div>
         )}
 
         {isGenerating && (
@@ -2050,6 +2193,14 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
 
         <div ref={messagesEndRef} />
         
+        {/* Hidden debug area as requested to ensure live updates remain active */}
+        <textarea 
+          className="hidden" 
+          value={lastLiveResponse} 
+          readOnly 
+          aria-hidden="true" 
+        />
+        
         {/* Scroll Bottom Button */}
         <AnimatePresence>
           {showScrollBottom && (
@@ -2065,23 +2216,6 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           )}
         </AnimatePresence>
       </div>
-
-      {isLive && (
-        <div className="p-4 border-b border-neutral-100 bg-neutral-50 animate-in slide-in-from-top duration-300">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] text-neutral-500 font-bold uppercase">Raw Voice Response</span>
-            <button onClick={() => navigator.clipboard.writeText(lastLiveResponse)} className="p-1 hover:bg-neutral-200 rounded-sm">
-              <Copy className="w-3 h-3 text-neutral-500" />
-            </button>
-          </div>
-          <textarea
-            readOnly
-            value={lastLiveResponse}
-            className="w-full text-xs font-mono bg-white border border-neutral-200 p-2 rounded-sm h-24 resize-none"
-            placeholder="Waiting for AI response..."
-          />
-        </div>
-      )}
 
       {/* Input Area */}
       <div className="p-4 bg-white/80 backdrop-blur-xl border-t border-neutral-100 shrink-0">

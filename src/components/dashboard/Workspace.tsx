@@ -361,6 +361,23 @@ function FileNotificationCard({ file, onClick, onDelete }: { file: FileItem; onC
     return `${Math.floor(hours / 24)}d ago`;
   };
 
+  const getPreviewText = (htmlContent: string) => {
+    if (!htmlContent) return 'Empty file...';
+    try {
+      // First, strip anything that looks like a base64 string completely out to avoid huge text blocks
+      const withoutBase64 = htmlContent.replace(/data:image\/[a-zA-Z]*;base64,[^\s"']+/g, '[Image]');
+      // Strip gallery data arrays
+      const withoutGalleryJSON = withoutBase64.replace(/data-images='\[.*?\]'/g, '');
+      // Strip remaining HTML tags
+      let text = withoutGalleryJSON.replace(/<[^>]+>/g, ' ').trim();
+      text = text.replace(/\s+/g, ' '); // collapse extra whitespace
+      if (text.length > 100) return text.substring(0, 100) + '...';
+      return text || 'Empty file...';
+    } catch {
+      return 'Empty file...';
+    }
+  };
+
   return (
     <motion.div 
       layout
@@ -380,7 +397,7 @@ function FileNotificationCard({ file, onClick, onDelete }: { file: FileItem; onC
               <span className="text-xs text-neutral-400 font-medium">{timeAgo(file.updatedAt)}</span>
             </div>
             <p className="text-xs text-neutral-500 mt-0.5 line-clamp-1 font-medium">
-              {file.content?.replace(/[#*`]/g, '') || "Empty file..."}
+              {getPreviewText(file.content)}
             </p>
           </div>
         </div>
