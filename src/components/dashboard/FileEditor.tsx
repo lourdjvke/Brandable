@@ -20,6 +20,8 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
   const [saving, setSaving] = useState(false);
   const [showTagMenu, setShowTagMenu] = useState(false);
   const [newTagName, setNewTagName] = useState("");
+  const [isScrolled, setIsScrolled] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -34,6 +36,14 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
     });
     return () => unsub();
   }, [file.id]);
+
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const handleScroll = () => setIsScrolled(container.scrollTop > 50);
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
@@ -95,18 +105,20 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
-      className="h-full flex flex-col bg-white overflow-hidden relative"
+      className="h-full flex flex-col bg-white overflow-y-auto relative no-scrollbar"
+      ref={scrollRef}
     >
+        <style>{`.no-scrollbar::-webkit-scrollbar { display: none; } .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }`}</style>
       {/* Header Image */}
-      <div className="relative h-48 bg-neutral-100 shrink-0 group">
+      <div className={cn("relative bg-neutral-100 shrink-0 group transition-all duration-300", isScrolled ? "h-16" : "h-48")}>
         {headerImage ? (
-          <img src={headerImage} alt="Header" className="w-full h-full object-cover" />
+          <img src={headerImage} alt="Header" className={cn("w-full h-full object-cover transition-opacity duration-300", isScrolled ? "opacity-0" : "opacity-100")} />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-neutral-400">
+          <div className={cn("w-full h-full flex items-center justify-center text-neutral-400 transition-opacity duration-300", isScrolled ? "opacity-0" : "opacity-100")}>
             <ImageIcon className="w-8 h-8 opacity-50" />
           </div>
         )}
-        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <div className={cn("absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center", isScrolled && "hidden")}>
           <button 
             onClick={() => fileInputRef.current?.click()}
             className="bg-white text-black px-4 py-2 rounded-full text-sm font-medium shadow-lg hover:scale-105 transition-transform"
@@ -123,14 +135,16 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-3 flex-1">
-            <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center shrink-0">
-              {getIcon()}
+            <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center shrink-0 overflow-hidden">
+              {isScrolled && headerImage ? (
+                 <img src={headerImage} alt="Thumbnail" className="w-full h-full object-cover"/>
+              ) : getIcon()}
             </div>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="font-bold text-xl outline-none bg-transparent w-full"
+              className={cn("outline-none bg-transparent w-full transition-all duration-300", isScrolled ? "font-medium text-lg" : "font-bold text-xl")}
               placeholder="Untitled"
             />
           </div>
@@ -139,7 +153,7 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-neutral-800 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 border border-neutral-200 text-black rounded-full text-sm font-medium hover:bg-neutral-50 transition-colors disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             <span className="hidden sm:inline">Save</span>
@@ -147,7 +161,7 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full">
+      <div className="flex-1 p-6 max-w-4xl mx-auto w-full">
         <div className="flex flex-wrap items-center gap-2 mb-6">
           {tags.map(tag => (
             <span 

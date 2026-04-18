@@ -2,47 +2,111 @@ import { useState, useEffect, useRef, useMemo, useImperativeHandle, forwardRef }
 import { UserProfile, ChatSession, ChatMessage, FileItem, FileType } from "@/src/types";
 import { db } from "@/src/lib/firebase";
 import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, deleteDoc, getDocs, orderBy, limit, arrayUnion } from "firebase/firestore";
-import { Copy, Send, Mic, Square, Settings, Plus, Image as ImageIcon, X, Loader2, ChevronRight, BrainCircuit, ChevronDown, User, Bot, MessageSquare } from "lucide-react";
+import { Copy, Send, Mic, Square, Settings, Plus, Image as ImageIcon, X, Loader2, ChevronRight, BrainCircuit, ChevronDown, User, Bot, MessageSquare, History, Volume2, RotateCcw, ExternalLink, ArrowDown, Check } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
-import { GoogleGenAI as LiveGenAI, LiveServerMessage, Modality } from "@google/genai";
-import { GoogleGenerativeAI, FunctionDeclaration } from "@google/generative-ai";
+import { GoogleGenAI, LiveServerMessage, Modality, Type, ThinkingLevel } from "@google/genai";
 import ReactMarkdown from "react-markdown";
 
-interface AICopilotProps {
-  profile: UserProfile;
-  currentPath: string[];
-  currentFolderId: string | null;
-  files: FileItem[];
-  onNavigate: (folderId: string | null) => void;
-  onOpenFile: (file: FileItem) => void;
-  onOpenSettings: () => void;
-  sessionId: string | null;
-  apiKey: string;
-  onSessionChange: (id: string | null) => void;
-  onCreateFile: (name: string, folderId: string | null, content?: string, type?: FileType) => Promise<string | undefined>;
-  onUpdateFile: (id: string, updates: Partial<FileItem>) => Promise<void>;
-  onDeleteFile: (id: string) => Promise<void>;
-  onCreateFolder: (name: string, parentId: string | null) => Promise<string | undefined>;
+const cleanText = (text: string) => {
+  return text.replace(/\*\*/g, '').replace(/#/g, '').trim().substring(0, 40) + (text.length > 40 ? '...' : '');
+};
+
+interface LinkMetadata {
+  title?: string;
+  description?: string;
+  image?: string;
+  url: string;
 }
 
-function parseCommandArg(line: string, argName: string) {
-  // Support --name="val", --name=val, name="val", name: "val"
-  const regex = new RegExp(`(?:--|-)?${argName}\\s*[:=]\\s*(?:"([^"]*)"|([^\\s]+))`, "i");
-  const match = line.match(regex);
-  if (match) return (match[1] !== undefined ? match[1] : match[2]) || "";
-  
-  // Fallback for ID specifically if user types "open folder -ID"
-  if (argName === 'id') {
-    const fallbackMatch = line.match(/\s-([a-zA-Z0-9_-]{15,})/);
-    if (fallbackMatch) return fallbackMatch[1];
+async function fetchUrlMetadata(url: string): Promise<LinkMetadata> {
+  try {
+    const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+    const data = await res.json();
+    const html = data.contents;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    
+    const title = doc.querySelector("title")?.innerText || 
+                 doc.querySelector('meta[property="og:title"]')?.getAttribute("content") || 
+                 url;
+    const description = doc.querySelector('meta[name="description"]')?.getAttribute("content") || 
+                       doc.querySelector('meta[property="og:description"]')?.getAttribute("content") || "";
+    const image = doc.querySelector('meta[property="og:image"]')?.getAttribute("content") || "";
+    
+    return { title, description, image, url };
+  } catch (err) {
+    return { url };
   }
-  return null;
 }
 
-function MessageBubble({ msg, viewingImage, setViewingImage }: { msg: ChatMessage; viewingImage: string | null; setViewingImage: (url: string | null) => void }) {
+function LinkPreview({ url }: { url: string }) {
+  const [metadata, setMetadata] = useState<LinkMetadata | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchUrlMetadata(url).then(m => {
+      setMetadata(m);
+      setLoading(false);
+    });
+  }, [url]);
+
+  if (loading) return null;
+  if (!metadata?.title) return null;
+
+  return (
+    <a 
+      href={url} 
+      target="_blank" 
+      rel="noopener noreferrer"
+      className="flex flex-col gap-2 p-3 my-2 bg-neutral-50 border border-neutral-200 rounded-lg hover:bg-neutral-100 transition-colors group no-underline max-w-full overflow-hidden"
+    >
+      <div className="flex gap-3 items-start min-w-0">
+        {metadata.image && (
+          <img src={metadata.image} alt="" className="w-16 h-16 rounded object-cover shrink-0" referrerPolicy="no-referrer" />
+        )}
+        <div className="flex flex-col gap-0.5 overflow-hidden min-w-0 flex-1">
+          <span className="text-sm font-semibold text-neutral-900 truncate group-hover:text-black block">{metadata.title}</span>
+          {metadata.description && <p className="text-xs text-neutral-500 line-clamp-2 leading-relaxed">{metadata.description}</p>}
+          <div className="flex items-center gap-1.5 mt-1 overflow-hidden min-w-0">
+             <img src={`https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`} alt="" className="w-3 h-3 rounded-sm shrink-0 grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100 transition-all" />
+             <span className="text-[10px] text-neutral-400 truncate">{new URL(url).hostname}</span>
+          </div>
+        </div>
+      </div>
+    </a>
+  );
+}
+
+function MessageBubble({ 
+  msg, 
+  viewingImage, 
+  setViewingImage, 
+  onSpeak, 
+  onRetry 
+}: { 
+  msg: ChatMessage; 
+  viewingImage: string | null; 
+  setViewingImage: (url: string | null) => void;
+  onSpeak: (text: string) => void;
+  onRetry: () => void;
+}) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   
+  const handleCopy = () => {
+    navigator.clipboard.writeText(msg.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const extractLinks = (text: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return text.match(urlRegex) || [];
+  };
+
+  const links = useMemo(() => extractLinks(msg.content), [msg.content]);
+
   // Custom renderer for commands to make them UI appropriate
   const renderContent = (content: string) => {
     const lines = content.split('\n');
@@ -107,11 +171,24 @@ function MessageBubble({ msg, viewingImage, setViewingImage }: { msg: ChatMessag
   };
 
   return (
-    <div className={cn("flex flex-col max-w-[85%]", msg.role === "user" ? "self-end items-end" : "self-start items-start")}>
+    <div className={cn(
+      "flex flex-col group", 
+      msg.role === "user" ? "max-w-[85%] self-end items-end" : "w-full max-w-full self-start items-start"
+    )}>
+      {msg.role === "assistant" && (
+        <div className="flex items-center gap-2 mb-1.5 px-0.5">
+          <div className="w-5 h-5 rounded-full bg-black flex items-center justify-center">
+            <Bot className="w-3 h-3 text-white" />
+          </div>
+          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">AI Copilot</span>
+        </div>
+      )}
+
       <div className={cn(
-        "px-3 py-2 rounded-md text-sm leading-relaxed w-full",
-        msg.role === "user" ? "bg-black text-white rounded-tr-none" : 
-        msg.role === "system" ? "bg-red-50 text-red-600" : "bg-neutral-100 text-black rounded-tl-none"
+        "rounded-md text-sm leading-relaxed",
+        msg.role === "user" ? "bg-black text-white px-3 py-2 rounded-tr-none" : 
+        msg.role === "system" ? "bg-red-50 text-red-600 px-3 py-2 w-full" : 
+        "bg-transparent text-black w-full"
       )}>
         {msg.imageUrls && msg.imageUrls.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2">
@@ -128,6 +205,7 @@ function MessageBubble({ msg, viewingImage, setViewingImage }: { msg: ChatMessag
         )}
         <div className={cn(
           "prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-neutral-800 prose-pre:text-white",
+          msg.role === "assistant" && "text-neutral-800",
           msg.isSilent && "opacity-70 italic"
         )}>
           {msg.isSilent && (
@@ -140,12 +218,87 @@ function MessageBubble({ msg, viewingImage, setViewingImage }: { msg: ChatMessag
             <ReactMarkdown>{msg.content}</ReactMarkdown>
           )}
         </div>
+
+        {msg.role === "user" && links.length > 0 && (
+          <div className="mt-2 flex flex-col gap-1 max-w-[70vw] w-64 overflow-hidden self-end">
+            {links.map((link, idx) => <LinkPreview key={idx} url={link} />)}
+          </div>
+        )}
+
+        {msg.role === "assistant" && (
+          <div className="mt-4 flex flex-col gap-3">
+             {/* Sources */}
+             {links.length > 0 && (
+               <div className="flex flex-wrap gap-2 pt-2 border-t border-neutral-100">
+                  <span className="text-[10px] font-bold text-neutral-300 mr-1 uppercase">Sources</span>
+                  {links.map((link, idx) => (
+                    <a 
+                      key={idx}
+                      href={link} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-2 py-1 bg-neutral-50 hover:bg-neutral-100 border border-neutral-100 rounded-full text-[10px] text-neutral-500 transition-colors group/link"
+                    >
+                      <img 
+                        src={`https://www.google.com/s2/favicons?domain=${new URL(link).hostname}&sz=32`} 
+                        alt="" 
+                        className="w-3 h-3 rounded-sm grayscale group-hover/link:grayscale-0 transition-all" 
+                      />
+                      <span className="truncate max-w-[100px]">{new URL(link).hostname}</span>
+                    </a>
+                  ))}
+               </div>
+             )}
+
+             {/* Actions */}
+             <div className="flex items-center gap-3 opacity-100 mt-2 transition-opacity">
+               <button 
+                  onClick={() => onSpeak(msg.content)}
+                  className="p-1.5 text-neutral-400 hover:text-black hover:bg-neutral-100 rounded-md transition-all active:scale-95"
+                  title="Speak"
+               >
+                 <Volume2 className="w-3.5 h-3.5" />
+               </button>
+               <button 
+                  onClick={handleCopy}
+                  className="p-1.5 text-neutral-400 hover:text-black hover:bg-neutral-100 rounded-md transition-all active:scale-95"
+                  title="Copy"
+               >
+                 {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+               </button>
+               <button 
+                  onClick={onRetry}
+                  className="p-1.5 text-neutral-400 hover:text-black hover:bg-neutral-100 rounded-md transition-all active:scale-95"
+                  title="Retry"
+               >
+                 <RotateCcw className="w-3.5 h-3.5" />
+               </button>
+             </div>
+          </div>
+        )}
       </div>
       <span className="text-[10px] text-neutral-400 mt-1 px-1 font-medium">
         {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
       </span>
     </div>
   );
+}
+
+interface AICopilotProps {
+  profile: UserProfile;
+  currentPath: string[];
+  currentFolderId: string | null;
+  files: FileItem[];
+  onNavigate: (id: string | null) => void;
+  onOpenSettings: () => void;
+  sessionId: string | null;
+  apiKey: string | null;
+  onOpenFile: (file: FileItem) => void;
+  onCreateFile: (name: string, folderId: string | null, content: string, type: FileType, headerImage?: string) => Promise<string | null>;
+  onUpdateFile: (id: string, updates: Partial<FileItem>) => Promise<void>;
+  onDeleteFile: (id: string) => Promise<void>;
+  onCreateFolder: (name: string, parentId: string | null) => Promise<string | null>;
+  onSessionChange?: (id: string) => void;
 }
 
 export default forwardRef<any, AICopilotProps>(function AICopilot({ 
@@ -184,9 +337,30 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   const [attachedImages, setAttachedImages] = useState<{ url: string; file: File }[]>([]);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [lastLiveResponse, setLastLiveResponse] = useState<string>("");
-  const [selectedModel, setSelectedModel] = useState<string>("gemini-2.5-flash");
-  const [showModelSelector, setShowModelSelector] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>("gemini-3-flash-preview");
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const processedCommands = useRef<Set<string>>(new Set());
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 100;
+    setShowScrollBottom(!isAtBottom);
+  };
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleSpeak = (text: string) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
 
   useEffect(() => {
     const processCommands = async () => {
@@ -250,6 +424,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               if (content.includes("create_file")) {
                 const fileName = cmdLineParser(content, "name") || "Untitled";
                 const folderNameOrId = cmdLineParser(content, "folder") || cmdLineParser(content, "folderId");
+                const headerImage = cmdLineParser(content, "headerImage");
                 let fileContent = cmdLineParser(content, "content") || "";
                 fileContent = fileContent.replace(/\\n/g, '\n'); 
                 
@@ -269,6 +444,12 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                 }
 
                 await onCreateFile(fileName, folderId, fileContent, fileType);
+                if (headerImage) {
+                   const filesSnap = await getDocs(query(collection(db, "files"), where("name", "==", fileName), where("parentId", "==", folderId)));
+                   if (!filesSnap.empty) {
+                     await onUpdateFile(filesSnap.docs[0].id, { headerImage });
+                   }
+                }
               } else if (content.includes("create_folder")) {
                 const folderName = cmdLineParser(content, "name") || "Untitled Folder";
                 const parentNameOrId = cmdLineParser(content, "parent") || cmdLineParser(content, "parentId");
@@ -348,6 +529,25 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                     console.log("Reading file content for text AI command...");
                   }
                 }
+              } else if (content.includes("read_url")) {
+                const url = cmdLineParser(content, "url");
+                if (url) {
+                  try {
+                    const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
+                    const data = await response.json();
+                    await saveMessage(currentSessionId, {
+                      role: "system",
+                      content: `URL content for ${url}: ${data.contents.substring(0, 1000)}...`,
+                      createdAt: Date.now()
+                    });
+                  } catch (e: any) {
+                    await saveMessage(currentSessionId, {
+                      role: "system",
+                      content: `Execution failed: Could not read URL ${url}`,
+                      createdAt: Date.now()
+                    });
+                  }
+                }
               }
             }
 
@@ -357,8 +557,13 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               content: `Text commands executed successfully. execute=done`,
               createdAt: Date.now()
             });
-          } catch (e) {
+          } catch (e: any) {
             console.error("Failed to parse/execute auto-detection AI commands:", e);
+            await saveMessage(currentSessionId, {
+              role: "system",
+              content: `Execution failed: ${e.message || String(e)}`,
+              createdAt: Date.now()
+            });
           } finally {
             setToolExecutionStatus(null);
           }
@@ -369,10 +574,10 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   }, [messages, onCreateFile, onUpdateFile, onDeleteFile, onCreateFolder, currentFolderId, currentSessionId, files]);
 
   const TEXT_MODELS = [
-    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
-    { id: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite" },
     { id: "gemini-3-flash-preview", name: "Gemini 3 Flash" },
-    { id: "gemini-2.5-flash-lite-preview", name: "Gemini 2.5 Flash Lite" },
+    { id: "gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite" },
+    { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro" },
+    { id: "gemini-flash-latest", name: "Gemini Flash Latest" },
   ];
 
   useImperativeHandle(ref, () => ({
@@ -406,7 +611,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
     const key = getApiKey();
     if (!key) return null;
     try {
-      return new GoogleGenerativeAI(key);
+      return new GoogleGenAI({ apiKey: key });
     } catch (e) {
       console.error("GenAI Init Error:", e);
       return null;
@@ -417,7 +622,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
     const key = getApiKey();
     if (!key) return null;
     try {
-      return new LiveGenAI({ apiKey: key } as any);
+      return new GoogleGenAI({ apiKey: key });
     } catch (e) {
       console.error("LiveAI Init Error:", e);
       return null;
@@ -513,10 +718,11 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   const generateTitle = async (sessionId: string, firstMessage: string) => {
     try {
       if (!genAI) return;
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-      const result = await model.generateContent(`Generate a short, concise title (max 4 words) for a chat that starts with: "${firstMessage}"`);
-      const response = await result.response;
-      const title = response.text().replace(/["']/g, "").trim() || "New Chat";
+      const response = await genAI.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Generate a short, concise title (max 4 words) for a chat that starts with: "${firstMessage}"`
+      });
+      const title = response.text?.replace(/["']/g, "").trim() || "New Chat";
       await updateDoc(doc(db, "chatSessions", sessionId), { title });
     } catch (err) {
       console.error("Failed to generate title:", err);
@@ -568,8 +774,9 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
     return docRef.id;
   };
 
-  const handleSend = async () => {
-    if (!input.trim() && attachedImages.length === 0) return;
+  const handleSend = async (retryContent?: string) => {
+    const sendContent = retryContent || input;
+    if (!sendContent.trim() && attachedImages.length === 0) return;
     
     if (!genAI) {
       alert("Please set your Gemini API Key in Settings.");
@@ -591,8 +798,19 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       setCurrentSessionId(sessionId);
     }
 
-    const userMsgContent = input;
+    const userMsgContent = sendContent;
     const imageUrls = attachedImages.map(img => img.url);
+
+    // Fetch link metadata proactively if links are present
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urlsInMessage = userMsgContent.match(urlRegex) || [];
+    let linkMetadataSummary = "";
+    if (urlsInMessage.length > 0) {
+      const metadataResults = await Promise.all(urlsInMessage.map(u => fetchUrlMetadata(u)));
+      linkMetadataSummary = metadataResults.map(m => 
+        `[URL Context: ${m.url} | Title: ${m.title || "N/A"} | Description: ${m.description || "N/A"}]`
+      ).join("\n");
+    }
     
     const userMessage: Omit<ChatMessage, "id"> = {
       role: "user",
@@ -623,6 +841,11 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       let finalResponse = null;
       let usedModelName = selectedModel;
 
+      // Prepare final content for AI including metadata summary if any
+      const lastUserMsgContent = linkMetadataSummary 
+        ? `${userMsgContent}\n\nLink Metadata Provided:\n${linkMetadataSummary}\n(AI: Use this metadata instead of read_url if it covers what you need)`
+        : userMsgContent;
+
       while (attempts < 3) {
         try {
           const currentModelName = (useRandomModel && attempts > 0) 
@@ -631,219 +854,241 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           
           usedModelName = currentModelName;
 
-          const tools: any = [{
-            functionDeclarations: [
-              {
-                name: "create_file",
-                description: "Create a new file.",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    name: { type: "string", description: "Name of the file" },
-                    folderId: { type: "string", description: "ID of the folder or null" },
-                    content: { type: "string", description: "Initial content for the file" },
-                    type: { type: "string", description: "Type of file (e.g. script, caption, brainstorm)"}
-                  },
-                  required: ["name", "content"]
-                }
-              },
-              {
-                name: "create_folder",
-                description: "Create a new folder.",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    name: { type: "string", description: "Name of the folder" },
-                    parentId: { type: "string", description: "ID of the parent folder or null" }
-                  },
-                  required: ["name"]
-                }
-              },
-              {
-                name: "update_file",
-                description: "Update an existing file.",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    id: { type: "string", description: "ID of the file" },
-                    content: { type: "string", description: "New content for the file" }
-                  },
-                  required: ["id", "content"]
-                }
-              },
-              {
-                name: "read_file",
-                description: "Reads the content of an existing file.",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    id: { type: "string", description: "ID of the file to read" }
-                  },
-                  required: ["id"]
-                }
-              },
-              {
-                name: "duplicate_item",
-                description: "Duplicate an existing file or folder.",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    id: { type: "string", description: "ID of the item to duplicate" }
-                  },
-                  required: ["id"]
-                }
-              },
-              {
-                name: "search_content",
-                description: "Search for text within all files and items in the workspace.",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    query: { type: "string", description: "The text to search for" }
-                  },
-                  required: ["query"]
-                }
-              },
-              {
-                name: "analyze_workspace",
-                description: "Get a comprehensive analysis of the current workspace structure and all contents.",
-                parameters: { type: "object", properties: {} }
-              },
-              {
-                name: "close_file",
-                description: "Close the currently open file preview.",
-                parameters: { type: "object", properties: {} }
-              },
-              {
-                name: "go_to_root",
-                description: "Navigate to the root level of the workspace.",
-                parameters: { type: "object", properties: {} }
-              },
-              {
-                name: "navigate_up",
-                description: "Go back one level up in the folder structure (useful for 'closing' a folder).",
-                parameters: { type: "object", properties: {} }
-              },
-              {
-                name: "braindump",
-                description: "Process a messy brain dump of ideas and organize them into structured files within a new folder.",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    rawText: { type: "string", description: "The messy text/ideas to organize" },
-                    suggestedFolderName: { type: "string", description: "Name for the new folder to contain the structured ideas" }
-                  },
-                  required: ["rawText"]
-                }
-              },
-              {
-                name: "delete_item",
-                description: "Delete a file or folder. IMPORTANT: You MUST ask the user for confirmation ('Are you sure you want to delete...?') before calling this tool, unless the user has already explicitly confirmed it.",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    id: { type: "string", description: "ID of the item" },
-                    confirmed: { type: "boolean", description: "Whether the user has confirmed the deletion. Set to true only if they have." }
-                  },
-                  required: ["id"]
-                }
-              },
-              {
-                name: "rename_item",
-                description: "Rename a file or folder without changing its content.",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    id: { type: "string", description: "ID of the item" },
-                    name: { type: "string", description: "New name" }
-                  },
-                  required: ["id", "name"]
-                }
-              },
-              {
-                name: "move_item",
-                description: "Move a file or folder to a new parent folder. Use null or 'root' to move to root.",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    id: { type: "string", description: "ID of the item" },
-                    parentId: { type: "string", description: "ID of the new parent folder, or null" }
-                  },
-                  required: ["id"]
-                }
-              },
-              {
-                name: "open_item",
-                description: "Open a file or folder in the UI (navigates into it).",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    id: { type: "string", description: "ID of the item to open" }
-                  },
-                  required: ["id"]
-                }
+          const functionDeclarations = [
+            {
+              name: "create_file",
+              description: "Create a new file.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING, description: "Name of the file" },
+                  folderId: { type: Type.STRING, description: "ID of the folder or null" },
+                  content: { type: Type.STRING, description: "Initial content for the file" },
+                  type: { type: Type.STRING, description: "Type of file (e.g. script, caption, brainstorm)"},
+                  headerImage: { type: Type.STRING, description: "Base64 image data or URL for the header image" }
+                },
+                required: ["name", "content"]
               }
-            ]
-          }];
+            },
+            {
+              name: "create_folder",
+              description: "Create a new folder.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING, description: "Name of the folder" },
+                  parentId: { type: Type.STRING, description: "ID of the parent folder or null" }
+                },
+                required: ["name"]
+              }
+            },
+            {
+              name: "update_file",
+              description: "Update an existing file.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING, description: "ID of the file" },
+                  content: { type: Type.STRING, description: "New content for the file" }
+                },
+                required: ["id", "content"]
+              }
+            },
+            {
+              name: "read_file",
+              description: "Reads the content of an existing file.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING, description: "ID of the file to read" }
+                },
+                required: ["id"]
+              }
+            },
+            {
+              name: "duplicate_item",
+              description: "Duplicate an existing file or folder.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING, description: "ID of the item to duplicate" }
+                },
+                required: ["id"]
+              }
+            },
+            {
+              name: "search_content",
+              description: "Search for text within all files and items in the workspace.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  query: { type: Type.STRING, description: "The text to search for" }
+                },
+                required: ["query"]
+              }
+            },
+            {
+              name: "analyze_workspace",
+              description: "Get a comprehensive analysis of the current workspace structure and all contents.",
+              parameters: { type: Type.OBJECT, properties: {} }
+            },
+            {
+              name: "close_file",
+              description: "Close the currently open file preview.",
+              parameters: { type: Type.OBJECT, properties: {} }
+            },
+            {
+              name: "go_to_root",
+              description: "Navigate to the root level of the workspace.",
+              parameters: { type: Type.OBJECT, properties: {} }
+            },
+            {
+              name: "navigate_up",
+              description: "Go back one level up in the folder structure (useful for 'closing' a folder).",
+              parameters: { type: Type.OBJECT, properties: {} }
+            },
+            {
+              name: "braindump",
+              description: "Process a messy brain dump of ideas and organize them into structured files within a new folder.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  rawText: { type: Type.STRING, description: "The messy text/ideas to organize" },
+                  suggestedFolderName: { type: Type.STRING, description: "Name for the new folder to contain the structured ideas" }
+                },
+                required: ["rawText"]
+              }
+            },
+            {
+              name: "delete_item",
+              description: "Delete a file or folder. IMPORTANT: You MUST ask the user for confirmation before calling this tool.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING, description: "ID of the item" },
+                  confirmed: { type: Type.BOOLEAN, description: "Whether the user has confirmed the deletion." }
+                },
+                required: ["id"]
+              }
+            },
+            {
+              name: "rename_item",
+              description: "Rename a file or folder without changing its content.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING, description: "ID of the item" },
+                  name: { type: Type.STRING, description: "New name" }
+                },
+                required: ["id", "name"]
+              }
+            },
+            {
+              name: "move_item",
+              description: "Move a file or folder to a new parent folder. Use null or 'root' to move to root.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING, description: "ID of the item" },
+                  parentId: { type: Type.STRING, description: "ID of the new parent folder, or null" }
+                },
+                required: ["id"]
+              }
+            },
+            {
+              name: "open_item",
+              description: "Open a file or folder in the UI (navigates into it).",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING, description: "ID of the item to open" }
+                },
+                required: ["id"]
+              }
+            }
+          ];
 
-          const model = genAI.getGenerativeModel({ 
-            model: usedModelName,
-            tools,
-            systemInstruction: `You are Brandable's AI Copilot. You help users manage their content, scripts, captions, and brainstorms.
-            Current context: User is in folder path: /${currentPath.join("/")}.
-            Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
+          const history = currentMessages.slice(0, -1)
+            .filter(m => m.role === "user" || m.role === "assistant")
+            .map(m => ({
+              role: m.role === "assistant" ? "model" as const : "user" as const,
+              parts: [{ text: m.content || "" }]
+            }));
 
-            You can use tools to create files, folders, read files, update files, delete items, move items, rename, or open items.
-            IMPORTANT:
-            1. DO NOT ask for permission for basic tasks. Be intelligent and self-directed. Just execute what the user is asking.
-            2. To read a file (including threads, social media scripts, etc.), use \`read_file\`. You MUST read the content before summarizing or suggesting edits.
-            3. To move a file/folder, use \`move_item\`. To move to root, set parentId to null or "root". To navigate to the workspace homepage, use \`go_to_root\`.
-            4. To open a file/folder in the UI, use \`open_item\` with the ID. 
-            5. To close the currently open file, use \`close_file\`. To "close" a folder (navigate out), use \`navigate_up\` or \`go_to_root\`.
-            6. To rename without changing content, use \`rename_item\`.
-            7. For deletions, ALWAYS ask for confirmation first unless they already confirmed.
-            8. Use \`analyze_workspace\` to give brand recommendations or overview of the project.
-            9. All items (scripts, brainstorms, threads) are files.
-            10. Always describe what you did or are about to do in your final text response.
-            
-            Alternatively, you can also output raw commands perfectly formatted in your response text to execute them, e.g.:
-            command: create_file --name="filename.txt" --folder="folderNameOrId" --content="your content\\nhere"
-            command: move_item --id="itemId" --parent="folderIdOrNull"
-            command: rename_item --id="itemId" --name="new name"
-            command: open_item --id="itemId"
-            command: close_file
-            command: go_to_root
-            command: delete_item --id="itemId" --confirmed=true
-            command: duplicate_item --id="itemId"
-            command: search --query="keyword"
-            `
-          });
-
-          const history = currentMessages.slice(0, -1).map(m => ({
-            role: m.role === "assistant" ? "model" : "user",
-            parts: [{ text: m.content }]
-          }));
-
-          // Gemini requires the first message in history to be from the 'user'
           let firstUserIndex = history.findIndex(h => h.role === "user");
           const finalHistory = firstUserIndex !== -1 ? history.slice(firstUserIndex) : [];
 
           const lastMsg = currentMessages[currentMessages.length - 1];
-          const lastMsgParts: any[] = [{ text: lastMsg.content }];
-          if (lastMsg.imageUrls) {
-            lastMsg.imageUrls.forEach(url => {
+          // If the last message is a system message (e.g. from command execution marker), 
+          // we need to find the last actual user message for the main prompt
+          let lastUserMsg = lastMsg;
+          if (lastUserMsg.role !== "user") {
+            const lastUserIdx = [...currentMessages].reverse().findIndex(m => m.role === "user");
+            if (lastUserIdx !== -1) {
+              lastUserMsg = currentMessages[currentMessages.length - 1 - lastUserIdx];
+            }
+          }
+
+          const lastMsgParts: any[] = [{ text: lastUserMsgContent || "" }];
+          if (userMessage.imageUrls) {
+            userMessage.imageUrls.forEach(url => {
               const base64Data = url.split(',')[1];
               const mimeType = url.split(';')[0].split(':')[1];
               lastMsgParts.push({ inlineData: { data: base64Data, mimeType } });
             });
           }
 
-          const chat = model.startChat({ history: finalHistory });
-          let result = await chat.sendMessage(lastMsgParts);
-          finalResponse = await result.response;
+          const systemInstruction = `You are Brandable's AI Copilot. You help users manage their content, scripts, captions, and brainstorms.
+              Current context: User is in folder path: /${currentPath.join("/")}.
+              Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
 
-          let functionCalls = finalResponse.functionCalls();
-          while (functionCalls && functionCalls.length > 0) {
+              You can use tools to create files, folders, read files, update files, delete items, move items, rename, or open items.
+              IMPORTANT:
+              1. DO NOT ask for permission for basic tasks. Be intelligent and self-directed. Just execute what the user is asking.
+              2. If any tool execution fails (e.g. file not found, permission error), you MUST append "Execution failed: [Error Reason]" to your response for the UI to display the error.
+              3. When creating a file from an attached image, you SHOULD include the image/thumbnail data in the headerImage property of the file creation tool if supported.
+              4. To read a file, use \`read_file\`.
+              5. To move a file/folder, use \`move_item\`. To move to root, set parentId to null or "root". To navigate to the workspace homepage, use \`go_to_root\`.
+              4. To open a file/folder in the UI, use \`open_item\` with the ID. 
+              5. To close the currently open file, use \`close_file\`. To "close" a folder (navigate out), use \`navigate_up\` or \`go_to_root\`.
+              6. To rename without changing content, use \`rename_item\`.
+              7. For deletions, ALWAYS ask for confirmation first unless they already confirmed.
+              8. Use \`analyze_workspace\` to give brand recommendations or overview of the project.
+              9. All items (scripts, brainstorms, threads) are files.
+              10. Always describe what you did or are about to do in your final text response.
+              
+              Alternatively, you can also output raw commands perfectly formatted in your response text to execute them, e.g.:
+              command: create_file --name="filename.txt" --folder="folderNameOrId" --content="your content\\nhere"
+              command: move_item --id="itemId" --parent="folderIdOrNull"
+              command: rename_item --id="itemId" --name="new name"
+              command: open_item --id="itemId"
+              command: close_file
+              command: go_to_root
+              command: delete_item --id="itemId" --confirmed=true
+              command: duplicate_item --id="itemId"
+              command: search --query="keyword"
+              `;
+
+          const response = await genAI.models.generateContent({
+            model: usedModelName,
+            contents: [...finalHistory, { role: "user", parts: lastMsgParts }],
+            config: {
+              tools: [{ functionDeclarations }],
+              systemInstruction: `${systemInstruction}
+              
+              ADDITIONAL INSTRUCTIONS:
+              1. If a URL is provided in the message, the system has proactively already fetched metadata (Title, Description) for you. Use this info to carry on the conversation.
+              2. CRITICAL: If the user sends a link with no explicit file operation instructions, you MUST simply reply with a conversational message. DO NOT create files, DO NOT move files, and DO NOT use any tools for URLs unless explicitly commanded.
+              3. Be concise and use proper markdown formatting.
+              4. After successfully performing tool actions, summarize the results naturally.`
+            }
+          });
+
+          finalResponse = response;
+          let functionCalls = finalResponse.functionCalls;
+          let toolTurnDepth = 0;
+          while (functionCalls && functionCalls.length > 0 && toolTurnDepth < 10) {
+            toolTurnDepth++;
             setToolExecutionStatus("Executing tasks...");
             let functionResponses: any[] = [];
             for (const call of functionCalls) {
@@ -851,15 +1096,18 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               let callResponse: any = { error: "Unknown error" };
               try {
                 if (call.name === "create_file") {
-                  const { name, folderId, content, type } = call.args;
+                  const { name, folderId, content, type, headerImage } = call.args as any;
                   const newId = await onCreateFile(name, folderId || currentFolderId, content, type as FileType);
+                  if (headerImage && newId) {
+                    await onUpdateFile(newId, { headerImage });
+                  }
                   callResponse = { success: true, id: newId };
                 } else if (call.name === "create_folder") {
-                  const { name, parentId } = call.args;
+                  const { name, parentId } = call.args as any;
                   const newId = await onCreateFolder(name, parentId || currentFolderId);
                   callResponse = { success: true, id: newId };
                 } else if (call.name === "read_file") {
-                  const { id } = call.args;
+                  const { id } = call.args as any;
                   const fileStr = files.find(f => f.id === id);
                   if (fileStr) {
                     callResponse = { success: true, content: fileStr.content || "File is empty or content is unavailable." };
@@ -867,11 +1115,11 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                     callResponse = { error: "File not found" };
                   }
                 } else if (call.name === "update_file") {
-                  const { id, content } = call.args;
+                  const { id, content } = call.args as any;
                   await onUpdateFile(id, { content });
                   callResponse = { success: true };
                 } else if (call.name === "delete_item") {
-                  const { id, confirmed } = call.args;
+                  const { id, confirmed } = call.args as any;
                   if (confirmed === true || confirmed === "true") {
                     await onDeleteFile(id);
                     callResponse = { success: true };
@@ -879,7 +1127,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                     callResponse = { error: "Action cancelled. Deletion requires confirmation." };
                   }
                 } else if (call.name === "duplicate_item") {
-                  const { id } = call.args;
+                  const { id } = call.args as any;
                   const original = files.find(f => f.id === id);
                   if (original) {
                     const newId = await onCreateFile(`${original.name} (Copy)`, original.parentId, original.content, original.type);
@@ -888,7 +1136,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                     callResponse = { error: "Item not found" };
                   }
                 } else if (call.name === "search_content") {
-                  const { query } = call.args;
+                  const { query } = call.args as any;
                   const results = files.filter(f => 
                     f.name.toLowerCase().includes(query.toLowerCase()) || 
                     (f.content && f.content.toLowerCase().includes(query.toLowerCase()))
@@ -901,11 +1149,10 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                     items: files.map(f => ({ name: f.name, type: f.type, folder: f.parentId || 'root' }))
                   };
                 } else if (call.name === "braindump") {
-                  const { rawText, suggestedFolderName } = call.args;
+                  const { rawText, suggestedFolderName } = call.args as any;
                   const folderId = await onCreateFolder(suggestedFolderName || "Organized Ideas", currentFolderId);
-                  // We'll create one main file for now, the AI can then follow up with more if it wants
-                  await onCreateFile("Organized Brain Dump", folderId as string, rawText, "brainstorm");
-                  callResponse = { success: true, folderId, message: "Folder created and ideas deposited. You can now split these into individual files." };
+                  if (folderId) await onCreateFile("Organized Brain Dump", folderId, rawText, "brainstorm");
+                  callResponse = { success: true, folderId };
                 } else if (call.name === "close_file") {
                   onOpenFile(null as any);
                   callResponse = { success: true };
@@ -918,39 +1165,62 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                     onNavigate(currentFolder?.parentId || null);
                   }
                   callResponse = { success: true };
-                } else if (call.name === "move_item") {
-                  const { id, parentId } = call.args;
-                  const newParent = parentId === "root" || parentId === "null" ? null : parentId;
-                  await onUpdateFile(id, { parentId: newParent });
-                  callResponse = { success: true };
                 } else if (call.name === "rename_item") {
-                  const { id, name } = call.args;
+                  const { id, name } = call.args as any;
                   await onUpdateFile(id, { name });
                   callResponse = { success: true };
+                } else if (call.name === "move_item") {
+                  const { id, parentId } = call.args as any;
+                  await onUpdateFile(id, { parentId: parentId === "root" || parentId === "null" ? null : parentId });
+                  callResponse = { success: true };
                 } else if (call.name === "open_item") {
-                  const { id } = call.args;
+                  const { id } = call.args as any;
                   const file = files.find(f => f.id === id);
                   if (file) {
                     if (file.type === "folder") onNavigate(file.id);
                     else onOpenFile(file);
                     callResponse = { success: true };
                   } else {
-                    callResponse = { error: "File not found" };
+                    callResponse = { error: "Item not found" };
                   }
-                } else {
-                  callResponse = { error: "Unknown tool" };
                 }
-              } catch (e: any) {
-                console.error("Function call execution error:", e);
-                callResponse = { error: e.message || String(e) };
+              } catch (err: any) {
+                console.error("Tool execution error:", err);
+                callResponse = { error: err.message || String(err) };
               }
               functionResponses.push({
-                functionResponse: { name: call.name, response: callResponse }
+                name: call.name,
+                content: [callResponse],
+                callId: call.id
               });
             }
-            result = await chat.sendMessage(functionResponses);
-            finalResponse = await result.response;
-            functionCalls = finalResponse.functionCalls();
+
+            const historyWithCalls = [
+              ...finalHistory, 
+              { role: "user" as const, parts: lastMsgParts },
+              { role: "model" as const, parts: finalResponse.candidates![0].content.parts },
+              { role: "function" as const, parts: functionResponses.map(fr => ({ 
+                functionResponse: { name: fr.name, response: fr.content[0] } 
+              })) }
+            ];
+
+            const nextStep = await genAI!.models.generateContent({
+              model: usedModelName,
+              contents: historyWithCalls as any,
+               config: {
+                 tools: [{ functionDeclarations }],
+                 systemInstruction: `${systemInstruction}
+              
+              ADDITIONAL INSTRUCTIONS:
+              1. If a URL is provided in the message, the system has proactively already fetched metadata (Title, Description) for you. Use this info to carry on the conversation.
+              2. CRITICAL: If the user sends a link with no explicit file operation instructions, you MUST simply reply with a conversational message. DO NOT create files, DO NOT move files, and DO NOT use any tools for URLs unless explicitly commanded.
+              3. Be concise and use proper markdown formatting.
+              4. After successfully performing tool actions, summarize the results naturally.`
+               }
+            });
+
+            finalResponse = nextStep;
+            functionCalls = finalResponse.functionCalls;
           }
 
           setToolExecutionStatus(null);
@@ -965,7 +1235,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
 
       if (!finalResponse) throw lastError;
 
-      const responseText = finalResponse.text() || "Finished executing actions.";
+      const responseText = finalResponse.text || "Finished executing actions.";
       let assistantMessage: Omit<ChatMessage, "id"> = {
         role: "assistant",
         content: responseText,
@@ -987,6 +1257,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       });
     } finally {
       setIsGenerating(false);
+      setToolExecutionStatus(null);
     }
   };
 
@@ -1458,37 +1729,193 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white relative">
+    <div className="flex flex-col h-full bg-white relative overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-neutral-200 flex items-center justify-between bg-white z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-sm bg-black flex items-center justify-center text-white">
-            <BrainCircuit className="w-5 h-5" />
+      <div className="flex items-center justify-between px-4 h-14 border-b border-neutral-100 bg-white sticky top-0 z-10 shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 bg-neutral-50 border border-neutral-100 rounded-lg">
+            <BrainCircuit className="w-5 h-5 text-black" />
           </div>
           <div>
-            <h2 className="font-bold text-sm">AI Copilot</h2>
-            <button 
-              onClick={() => setShowModelSelector(!showModelSelector)}
-              className="text-[10px] text-neutral-400 font-medium uppercase tracking-wider flex items-center gap-1 hover:text-black transition-colors"
-            >
-              {isLive ? "Gemini 3 Flash Live" : (TEXT_MODELS.find(m => m.id === selectedModel)?.name || "Chat Assistant")}
-              {!isLive && <ChevronDown className={cn("w-3 h-3 transition-transform", showModelSelector && "rotate-180")} />}
-            </button>
+            <h2 className="text-sm font-bold text-neutral-900 tracking-tight">AI Copilot</h2>
+            <p className="text-[10px] font-medium text-neutral-400 uppercase tracking-widest">{isLive ? "Live Voice" : "Chat Mode"}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={createNewSession} className="p-2 hover:bg-neutral-100 rounded-sm transition-colors text-black font-medium text-xs flex items-center gap-1">
-            <Plus className="w-4 h-4" /> New
+        <div className="flex items-center gap-1.5">
+          <button 
+            onClick={() => setShowSessions(true)}
+            className="p-2.5 text-neutral-400 hover:text-black hover:bg-neutral-50 rounded-xl transition-all active:scale-95"
+          >
+            <History className="w-5 h-5" />
           </button>
           <button 
-            onClick={() => setShowSessions(!showSessions)}
-            className="p-2 hover:bg-neutral-100 rounded-sm transition-colors text-neutral-500"
+            onClick={onOpenSettings}
+            className="p-2.5 text-neutral-400 hover:text-black hover:bg-neutral-50 rounded-xl transition-all active:scale-95"
           >
-            <MessageSquare className={cn("w-5 h-5 transition-colors", showSessions && "text-black")} />
+            <Settings className="w-5 h-5" />
           </button>
         </div>
       </div>
-      
+
+      {/* Sessions Bottom Sheet */}
+      <AnimatePresence>
+        {showSessions && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSessions(false)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm z-40 transition-all"
+            />
+            <motion.div 
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              className="absolute bottom-0 inset-x-0 h-[50vh] bg-white rounded-t-[32px] z-50 flex flex-col overflow-hidden shadow-2xl border-t border-neutral-100"
+            >
+              <div className="flex flex-col h-full bg-white">
+                <div className="flex items-center justify-between px-6 py-5 border-b border-neutral-100">
+                  <div className="flex items-center gap-3">
+                    <History className="w-5 h-5 text-neutral-400" />
+                    <h3 className="font-bold text-neutral-900 leading-none">History</h3>
+                  </div>
+                  <button 
+                    onClick={createNewSession}
+                    className="p-2 bg-black text-white rounded-full hover:scale-110 active:scale-95 transition-all"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto px-4 py-2 custom-scrollbar">
+                  {sessions.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-neutral-400 gap-3 grayscale opacity-60">
+                      <MessageSquare className="w-10 h-10" />
+                      <p className="text-sm font-medium">No conversations yet</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-2">
+                      {sessions.map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => {
+                            setCurrentSessionId(s.id);
+                            setShowSessions(false);
+                          }}
+                          className={cn(
+                            "group w-full max-w-full flex items-center justify-between gap-2 p-4 rounded-2xl transition-all border text-left overflow-hidden",
+                            currentSessionId === s.id 
+                              ? "bg-black border-black text-white" 
+                              : "bg-white border-neutral-50 hover:bg-neutral-50 text-neutral-600"
+                          )}
+                        >
+                          <div className="flex items-center gap-3 flex-1 min-w-0 pr-2">
+                             <div className={cn(
+                               "w-2 h-2 rounded-full shrink-0 animate-pulse",
+                               currentSessionId === s.id ? "bg-white" : "bg-neutral-200"
+                             )} />
+                             <span className="text-sm font-semibold truncate block">
+                               {s.title ? cleanText(s.title) : "Untitled Chat"}
+                             </span>
+                          </div>
+                          <div className={cn(
+                            "shrink-0 text-[10px] uppercase font-bold tracking-widest opacity-40 group-hover:opacity-100 transition-opacity",
+                            currentSessionId === s.id ? "text-white" : "text-neutral-400"
+                          )}>
+                             {new Date(s.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <div 
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-4 space-y-8 flex flex-col scroll-smooth custom-scrollbar relative"
+      >
+        {messages.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 space-y-6 text-center max-w-sm mx-auto">
+            <div className="w-20 h-20 bg-neutral-50 border border-neutral-100 rounded-3xl flex items-center justify-center animate-pulse">
+              <BrainCircuit className="w-10 h-10 text-neutral-900" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-neutral-900 mb-2">How can I help you?</h3>
+              <p className="text-sm text-neutral-500 leading-relaxed font-medium">
+                I can help you build brainstorms, scripts, captions, organize folders or just brainstorm ideas for your next big thing.
+              </p>
+            </div>
+            <div className="grid gap-2 w-full">
+              {[
+                "Create a folder named 'Project Alpha'",
+                "Outline a YouTube script about AI",
+                "Generate 5 IG captions for a tech startup"
+              ].map((suggestion, i) => (
+                <button 
+                  key={i}
+                  onClick={() => setInput(suggestion)}
+                  className="px-4 py-3 bg-white border border-neutral-100 rounded-2xl text-xs font-semibold text-neutral-600 hover:bg-neutral-50 hover:border-neutral-200 transition-all text-left whitespace-nowrap overflow-hidden text-ellipsis shadow-sm hover:translate-y-[-2px] active:translate-y-0"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          messages.map((msg) => (
+            <MessageBubble 
+              key={msg.id} 
+              msg={msg} 
+              viewingImage={viewingImage} 
+              setViewingImage={setViewingImage}
+              onSpeak={handleSpeak}
+              onRetry={() => handleSend(msg.content)}
+            />
+          ))
+        )}
+
+        {isGenerating && (
+          <div className="self-start px-0.5">
+            <div className="flex items-center gap-2 mb-1.5 opacity-50">
+              <Bot className="w-3 h-3" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">AI Thinking</span>
+            </div>
+            <Loader2 className="w-5 h-5 animate-spin text-neutral-400" />
+          </div>
+        )}
+        
+        {toolExecutionStatus && (
+          <div className="self-start text-[10px] text-blue-500 font-bold uppercase tracking-widest px-0.5 flex items-center gap-2">
+            <Loader2 className="w-3 h-3 animate-spin inline-block" />
+            {toolExecutionStatus}
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+        
+        {/* Scroll Bottom Button */}
+        <AnimatePresence>
+          {showScrollBottom && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: 20 }}
+              onClick={scrollToBottom}
+              className="fixed bottom-32 right-8 p-3 bg-black text-white rounded-full shadow-xl z-20 hover:scale-110 active:scale-95 transition-all outline-none"
+            >
+              <ArrowDown className="w-5 h-5" />
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+
       {isLive && (
         <div className="p-4 border-b border-neutral-100 bg-neutral-50 animate-in slide-in-from-top duration-300">
           <div className="flex items-center justify-between mb-2">
@@ -1506,104 +1933,8 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
         </div>
       )}
 
-      {/* Model Selector Dropdown */}
-      <AnimatePresence>
-        {showModelSelector && !isLive && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="absolute top-[73px] left-0 right-0 bg-white border-b border-neutral-100 shadow-lg z-30 overflow-hidden"
-          >
-            <div className="p-2 flex flex-col gap-1">
-              <p className="px-3 py-1 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Select Model</p>
-              {TEXT_MODELS.map(model => (
-                <button
-                  key={model.id}
-                  onClick={() => {
-                    setSelectedModel(model.id);
-                    setShowModelSelector(false);
-                  }}
-                  className={cn(
-                    "w-full text-left px-3 py-2 text-xs rounded-md transition-colors",
-                    selectedModel === model.id ? "bg-black text-white" : "hover:bg-neutral-100 text-neutral-600"
-                  )}
-                >
-                  {model.name}
-                </button>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Sessions Dropdown */}
-      <AnimatePresence>
-        {showSessions && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="absolute top-[73px] left-0 right-0 bg-white border-b border-neutral-100 shadow-lg z-20 overflow-hidden max-h-64 overflow-y-auto"
-          >
-            <div className="p-2 flex flex-col gap-1">
-              <p className="px-3 py-1 text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Chat History</p>
-              {sessions.map(session => (
-                <button
-                  key={session.id}
-                  onClick={() => {
-                    setCurrentSessionId(session.id);
-                    setShowSessions(false);
-                  }}
-                  className={cn(
-                    "w-full text-left px-3 py-2.5 text-xs rounded-md transition-colors flex items-center justify-between group",
-                    currentSessionId === session.id ? "bg-neutral-100 font-semibold" : "hover:bg-neutral-50"
-                  )}
-                >
-                  <span className="truncate flex-1">{session.title}</span>
-                  <span className="text-[9px] text-neutral-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {new Date(session.updatedAt).toLocaleDateString()}
-                  </span>
-                </button>
-              ))}
-              {sessions.length === 0 && (
-                <p className="px-3 py-4 text-center text-xs text-neutral-400">No chat history yet</p>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Chat Area */}
-      <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6 hide-scrollbar relative z-0 pb-32">
-        {messages.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-neutral-400 gap-4">
-            <div className="w-16 h-16 rounded-full bg-neutral-50 flex items-center justify-center">
-              <MessageSquare className="w-8 h-8 opacity-50" />
-            </div>
-            <p className="text-sm font-medium">How can I help you today?</p>
-          </div>
-        ) : (
-          messages.map((msg) => (
-             <MessageBubble key={msg.id} msg={msg} viewingImage={viewingImage} setViewingImage={setViewingImage} />
-          ))
-        )}
-        {isGenerating && (
-          <div className="self-start bg-neutral-100 px-4 py-3 rounded-2xl rounded-tl-sm">
-            <Loader2 className="w-5 h-5 animate-spin text-neutral-400" />
-          </div>
-        )}
-        {toolExecutionStatus && (
-          <div className="self-start text-xs text-blue-500 font-medium px-4 py-2 flex items-center gap-2">
-            <Loader2 className="w-3 h-3 animate-spin inline-block" />
-            {toolExecutionStatus}
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
       {/* Input Area */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-xl border-t border-neutral-100 z-10">
+      <div className="p-4 bg-white/80 backdrop-blur-xl border-t border-neutral-100 shrink-0">
         {/* Attached Images Preview */}
         {attachedImages.length > 0 && (
           <div className="flex gap-2 mb-3 overflow-x-auto pb-2">
@@ -1621,7 +1952,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           </div>
         )}
 
-        <div className="flex items-end gap-2 bg-neutral-100 p-1.5 rounded-md border border-neutral-200 focus-within:border-black transition-all relative z-10">
+        <div className="flex items-end gap-2 bg-neutral-100 p-1.5 rounded-2xl border border-neutral-100 focus-within:border-neutral-200 focus-within:bg-neutral-50 transition-all relative">
           <input 
             type="file" 
             accept="image/*" 
@@ -1632,7 +1963,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           />
           <button 
             onClick={() => fileInputRef.current?.click()}
-            className="p-2 text-neutral-500 hover:text-black transition-colors rounded-sm hover:bg-neutral-200 shrink-0"
+            className="p-2.5 text-neutral-400 hover:text-black transition-all rounded-xl hover:bg-white shrink-0 active:scale-95"
           >
             <ImageIcon className="w-5 h-5" />
           </button>
@@ -1646,16 +1977,16 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                 handleSend();
               }
             }}
-            placeholder="Ask anything..."
-            className="flex-1 bg-transparent border-none outline-none resize-none max-h-32 py-2 text-sm font-medium"
+            placeholder="Ask AI anything..."
+            className="flex-1 bg-transparent border-none outline-none resize-none max-h-32 py-2.5 text-sm font-semibold text-neutral-900 placeholder:text-neutral-400"
             rows={1}
           />
 
           {input.trim() || attachedImages.length > 0 ? (
             <button 
-              onClick={handleSend}
+              onClick={() => handleSend()}
               disabled={isGenerating}
-              className="p-2 bg-black text-white rounded-sm hover:bg-neutral-800 transition-colors disabled:opacity-50 shrink-0"
+              className="p-2.5 bg-black text-white rounded-xl hover:scale-105 active:scale-95 transition-all disabled:opacity-30 shrink-0 shadow-lg shadow-black/10"
             >
               <Send className="w-5 h-5" />
             </button>
@@ -1664,8 +1995,8 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               onClick={isLive ? stopLiveSession : startLiveSession}
               disabled={isConnecting}
               className={cn(
-                "p-2 rounded-sm transition-all shrink-0 relative overflow-hidden",
-                isLive ? "bg-red-500 text-white" : "bg-white text-black border border-neutral-200 hover:bg-neutral-100"
+                "p-2.5 rounded-xl transition-all shrink-0 relative overflow-hidden active:scale-95",
+                isLive ? "bg-red-500 text-white" : "bg-white text-neutral-400 border border-neutral-100 hover:text-black hover:bg-neutral-50 shadow-sm"
               )}
             >
               {isLive && (
@@ -1681,14 +2012,6 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                     }}
                     transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
                     className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,#3b82f6,#8b5cf6,#ec4899,#3b82f6)] blur-md opacity-60"
-                  />
-                  <motion.div 
-                    animate={{ 
-                      rotate: [360, 0],
-                      scale: [1.2, 1, 1.2],
-                    }}
-                    transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
-                    className="absolute inset-[-100%] bg-[conic-gradient(from_180deg,#10b981,#3b82f6,#8b5cf6,#10b981)] blur-lg opacity-40 mix-blend-overlay"
                   />
                 </motion.div>
               )}
@@ -1707,11 +2030,11 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4"
+            className="fixed inset-0 z-[100] bg-neutral-950/90 backdrop-blur-xl flex items-center justify-center p-4 lg:p-12"
             onClick={() => setViewingImage(null)}
           >
             <button 
-              className="absolute top-6 right-6 p-2 bg-white/10 rounded-full text-white hover:bg-white/20 transition-colors"
+              className="absolute top-6 right-6 p-3 bg-white/10 rounded-full text-white hover:bg-white/20 transition-all backdrop-blur-md z-10 active:scale-95"
               onClick={() => setViewingImage(null)}
             >
               <X className="w-6 h-6" />
@@ -1720,8 +2043,9 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
               src={viewingImage} 
-              className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl"
+              className="max-w-full max-h-full object-contain rounded-3xl shadow-2xl border border-white/10"
               onClick={(e) => e.stopPropagation()}
             />
           </motion.div>

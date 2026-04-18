@@ -24,6 +24,12 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   const [activeTab, setActiveTab] = useState<"workspace" | "settings">("workspace");
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    setIsEditing(!!selectedFile);
+  }, [selectedFile]);
   const [isDesktop, setIsDesktop] = useState(typeof window !== "undefined" ? window.innerWidth >= 768 : true);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -33,7 +39,6 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId;
   }, [currentSessionId]);
-  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const aiCopilotRef = useRef<any>(null);
@@ -196,14 +201,16 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   return (
     <div className="h-full flex bg-[#f8f9fa] relative overflow-y-auto">
       {/* Desktop Sidebar */}
-      <div className="hidden md:block">
-        <Sidebar 
-          activeTab={activeTab} 
-          setActiveTab={setActiveTab} 
-          isCopilotOpen={showCopilot}
-          onToggleCopilot={() => setIsCopilotOpen(!isCopilotOpen)}
-        />
-      </div>
+      {!isEditing && (
+        <div className="hidden md:block">
+          <Sidebar 
+            activeTab={activeTab} 
+            setActiveTab={setActiveTab} 
+            isCopilotOpen={showCopilot}
+            onToggleCopilot={() => setIsCopilotOpen(!isCopilotOpen)}
+          />
+        </div>
+      )}
 
       {/* Mobile Sidebar Overlay */}
       <AnimatePresence>
@@ -235,13 +242,15 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
 
       <main onScroll={handleMainScroll} className="flex-1 flex flex-col relative overflow-y-auto">
         {/* Mobile Header */}
-        <header className="md:hidden sticky top-0 flex items-center justify-between px-4 py-3 border-b border-neutral-200 bg-white/80 backdrop-blur-md z-40">
-          <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-neutral-500">
-            <Menu className="w-6 h-6" />
-          </button>
-          <div className="font-bold text-sm truncate max-w-[200px]">Brandable</div>
-          <div className="w-10"></div>
-        </header>
+        {!isEditing && (
+          <header className="md:hidden sticky top-0 flex items-center justify-between px-4 py-3 border-b border-neutral-200 bg-white/80 backdrop-blur-md z-40">
+            <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-neutral-500">
+              <Menu className="w-6 h-6" />
+            </button>
+            <div className="font-bold text-sm truncate max-w-[200px]">Brandable</div>
+            <div className="w-10"></div>
+          </header>
+        )}
 
         <AnimatePresence mode="wait">
           {activeTab === "workspace" ? (
