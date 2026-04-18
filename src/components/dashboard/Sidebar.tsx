@@ -1,4 +1,4 @@
-import { LayoutGrid, FolderKanban, Settings, LogOut, MessageSquare } from "lucide-react";
+import { LayoutGrid, FolderKanban, Settings, LogOut, MessageSquare, Youtube } from "lucide-react";
 import { motion } from "motion/react";
 import { auth } from "@/src/lib/firebase";
 import { cn } from "@/src/lib/utils";
@@ -15,6 +15,7 @@ interface SidebarProps {
 export default function Sidebar({ activeTab, setActiveTab, onClose, isCopilotOpen, onToggleCopilot }: SidebarProps) {
   const navItems = [
     { id: "workspace", label: "Workspace", icon: FolderKanban },
+    { id: "youtube", label: "Link YouTube", icon: Youtube },
     { id: "settings", label: "Settings", icon: Settings },
   ];
 

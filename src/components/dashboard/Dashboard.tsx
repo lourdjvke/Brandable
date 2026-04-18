@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate, useLocation, Routes, Route } from "react-router-dom";
 import { UserProfile, FileItem, FileType } from "@/src/types";
 import Sidebar from "./Sidebar";
 import Workspace from "./Workspace";
 import AICopilot from "./AICopilot";
 import SettingsView from "./SettingsView";
 import VoiceAssistant from "./VoiceAssistant";
+import LinkYouTube from "./LinkYouTube";
 import { NotificationProvider } from "./NotificationSystem";
 import { motion, AnimatePresence } from "motion/react";
 import { MessageSquare, Menu, X, Mic, ChevronUp } from "lucide-react";
@@ -21,16 +23,63 @@ export default function Dashboard({ profile }: { profile: UserProfile }) {
 }
 
 function DashboardContent({ profile }: { profile: UserProfile }) {
-  const [activeTab, setActiveTab] = useState<"workspace" | "settings">("workspace");
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  const [activeTab, setActiveTab] = useState<"workspace" | "settings" | "youtube">("workspace");
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [isEditing, setIsEditing] = useState(false);
 
+  // Sync tab with URL
+  useEffect(() => {
+    if (location.pathname === "/settings") setActiveTab("settings");
+    else if (location.pathname === "/youtube") setActiveTab("youtube");
+    else if (location.pathname === "/copilot") {
+      setActiveTab("workspace");
+      setIsCopilotOpen(true);
+    } else {
+      setActiveTab("workspace");
+    }
+  }, [location.pathname]);
+
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab as any);
+    if (tab === "workspace") navigate("/");
+    else navigate(`/${tab}`);
+  };
+
+  // Device back button logic to close items
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (selectedFile) {
+        setSelectedFile(null);
+        e.preventDefault();
+        window.history.pushState(null, "", window.location.pathname);
+      } else if (isCopilotOpen) {
+        setIsCopilotOpen(false);
+        e.preventDefault();
+        window.history.pushState(null, "", window.location.pathname);
+      } else if (isSidebarOpen) {
+        setIsSidebarOpen(false);
+        e.preventDefault();
+        window.history.pushState(null, "", window.location.pathname);
+      }
+    };
+
+    window.history.pushState(null, "", window.location.pathname);
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [selectedFile, isCopilotOpen, isSidebarOpen]);
+
   useEffect(() => {
     setIsEditing(!!selectedFile);
   }, [selectedFile]);
-  const [isDesktop, setIsDesktop] = useState(typeof window !== "undefined" ? window.innerWidth >= 768 : true);
+
+  const [isDesktop, setIsDesktop] = useState(typeof window !== "undefined" ? window.innerWidth >= 1280 : true);
+  const [isTablet, setIsTablet] = useState(typeof window !== "undefined" ? window.innerWidth >= 768 && window.innerWidth < 1280 : false);
+  
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const currentSessionIdRef = useRef<string | null>(null);
@@ -39,6 +88,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   useEffect(() => {
     currentSessionIdRef.current = currentSessionId;
   }, [currentSessionId]);
+  
   const [files, setFiles] = useState<FileItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const aiCopilotRef = useRef<any>(null);
@@ -98,7 +148,6 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
     let sessionId = currentSessionIdRef.current;
     
     if (!sessionId) {
-      // If no session in state, check for existing sessions first
       const q = query(
         collection(db, "chatSessions"), 
         where("ownerId", "==", profile.uid), 
@@ -111,7 +160,6 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
         currentSessionIdRef.current = sessionId;
         setCurrentSessionId(sessionId);
       } else {
-        // Create a new session if none exists at all
         const newDoc = await addDoc(collection(db, "chatSessions"), {
           ownerId: profile.uid,
           title: "Voice Brainstorming",
@@ -134,8 +182,12 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
       isSilent
     };
 
+    const cleanMessage = Object.fromEntries(
+      Object.entries(newMessage).filter(([_, v]) => v !== undefined)
+    );
+
     await updateDoc(sessionRef, {
-      messages: arrayUnion(newMessage),
+      messages: arrayUnion(cleanMessage),
       updatedAt: Date.now()
     });
   };
@@ -186,33 +238,31 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   }
 
   useEffect(() => {
-    setCurrentFolderId(null);
-    setSelectedFile(null);
-  }, [activeTab]);
-
-  useEffect(() => {
-    const handleResize = () => setIsDesktop(window.innerWidth >= 768);
+    const handleResize = () => {
+      setIsDesktop(window.innerWidth >= 1280);
+      setIsTablet(window.innerWidth >= 768 && window.innerWidth < 1280);
+    };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const showCopilot = isCopilotOpen || (activeTab === "workspace" && isDesktop && !selectedFile);
+  const showCopilotSidebar = isCopilotOpen || (activeTab === "workspace" && isDesktop && !selectedFile);
 
   return (
     <div className="h-full flex bg-[#f8f9fa] relative overflow-y-auto">
-      {/* Desktop Sidebar */}
+      {/* Sidebar - Hidden on mobile/tablet during editing or when overridden */}
       {!isEditing && (
-        <div className="hidden md:block">
+        <div className={cn("hidden lg:block", isTablet && "hidden")}>
           <Sidebar 
             activeTab={activeTab} 
-            setActiveTab={setActiveTab} 
-            isCopilotOpen={showCopilot}
+            setActiveTab={handleTabChange} 
+            isCopilotOpen={showCopilotSidebar}
             onToggleCopilot={() => setIsCopilotOpen(!isCopilotOpen)}
           />
         </div>
       )}
 
-      {/* Mobile Sidebar Overlay */}
+      {/* Mobile/Tablet Sidebar Overlay (Drawer) */}
       <AnimatePresence>
         {isSidebarOpen && (
           <>
@@ -221,19 +271,21 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsSidebarOpen(false)}
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] md:hidden"
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] lg:hidden"
             />
             <motion.div
               initial={{ x: "-100%" }}
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="fixed inset-y-0 left-0 w-[280px] bg-white z-[70] md:hidden"
+              className="fixed inset-y-0 left-0 w-[280px] bg-white z-[70] lg:hidden"
             >
               <Sidebar 
                 activeTab={activeTab} 
-                setActiveTab={setActiveTab} 
+                setActiveTab={handleTabChange} 
                 onClose={() => setIsSidebarOpen(false)}
+                isCopilotOpen={isCopilotOpen}
+                onToggleCopilot={() => { setIsCopilotOpen(!isCopilotOpen); setIsSidebarOpen(false); }}
               />
             </motion.div>
           </>
@@ -241,14 +293,19 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
       </AnimatePresence>
 
       <main onScroll={handleMainScroll} className="flex-1 flex flex-col relative overflow-y-auto">
-        {/* Mobile Header */}
+        {/* Mobile/Tablet Header */}
         {!isEditing && (
-          <header className="md:hidden sticky top-0 flex items-center justify-between px-4 py-3 border-b border-neutral-200 bg-white/80 backdrop-blur-md z-40">
+          <header className="lg:hidden sticky top-0 flex items-center justify-between px-4 py-3 border-b border-neutral-200 bg-white/80 backdrop-blur-md z-40">
             <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-neutral-500">
               <Menu className="w-6 h-6" />
             </button>
             <div className="font-bold text-sm truncate max-w-[200px]">Brandable</div>
-            <div className="w-10"></div>
+            <button 
+              onClick={() => setIsCopilotOpen(!isCopilotOpen)}
+              className="p-2 -mr-2 text-neutral-500"
+            >
+              <MessageSquare className="w-5 h-5" />
+            </button>
           </header>
         )}
 
@@ -282,9 +339,20 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
               className="h-full"
             >
               <SettingsView 
-              profile={profile} 
-              onKeyChange={setGeminiKey}
-            />
+                profile={profile} 
+                onKeyChange={setGeminiKey}
+              />
+            </motion.div>
+          ) : activeTab === "youtube" ? (
+            <motion.div
+              key="youtube"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              className="h-full"
+            >
+              <LinkYouTube profile={profile} onBack={() => handleTabChange("workspace")} />
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -320,20 +388,9 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
                   className="absolute inset-0 z-0"
                 >
                   <motion.div 
-                    animate={{ 
-                      rotate: [0, 360],
-                      scale: [1, 1.2, 1],
-                    }}
+                    animate={{ rotate: [0, 360], scale: [1, 1.2, 1] }}
                     transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
                     className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,#3b82f6,#8b5cf6,#ec4899,#3b82f6)] blur-md opacity-60"
-                  />
-                  <motion.div 
-                    animate={{ 
-                      rotate: [360, 0],
-                      scale: [1.2, 1, 1.2],
-                    }}
-                    transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
-                    className="absolute inset-[-100%] bg-[conic-gradient(from_180deg,#10b981,#3b82f6,#8b5cf6,#10b981)] blur-lg opacity-40 mix-blend-overlay"
                   />
                 </motion.div>
               )}
@@ -355,58 +412,69 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
         )}
       </main>
 
-      {/* Copilot Sidebar (Desktop) & Overlay (Mobile) */}
+      {/* Copilot Sidebar (Desktop) & Bottom Sheet (Mobile/Tablet) */}
       <AnimatePresence>
-        {isCopilotOpen && activeTab !== "settings" && (
+        {isCopilotOpen && (
           <>
-            {/* Mobile Overlay Background */}
+            {/* Backdrop for Sheets */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsCopilotOpen(false)}
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[80] md:hidden"
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[80] lg:hidden"
             />
+            {/* Copilot Container */}
+            <motion.div 
+              initial={isDesktop ? { x: "100%" } : { y: "100%" }}
+              animate={isDesktop ? { x: 0 } : { y: 0 }}
+              exit={isDesktop ? { x: "100%" } : { y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className={cn(
+                "fixed bottom-0 left-0 right-0 h-[92vh] rounded-t-[32px] md:rounded-t-[40px] z-[90] lg:relative lg:h-full lg:w-[400px] lg:rounded-none lg:z-auto bg-white border-t lg:border-t-0 lg:border-l border-neutral-100 flex flex-col overflow-hidden",
+                !isCopilotOpen && "hidden"
+              )}
+            >
+              {/* Drag Handle for Sheet */}
+              <div className="lg:hidden flex justify-center py-4 shrink-0">
+                <div className="w-12 h-1.5 bg-neutral-200 rounded-full" />
+              </div>
+              
+              <div className="lg:hidden absolute top-4 right-4 z-[100]">
+                <button onClick={() => setIsCopilotOpen(false)} className="p-2 bg-neutral-100 rounded-full hover:bg-neutral-200 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <AICopilot 
+                ref={aiCopilotRef}
+                profile={profile} 
+                currentPath={currentPath}
+                currentFolderId={currentFolderId}
+                files={files}
+                sessionId={currentSessionId}
+                apiKey={geminiKey}
+                onNavigate={(id) => {
+                  handleTabChange("workspace");
+                  setCurrentFolderId(id);
+                  if (window.innerWidth < 1280) setIsCopilotOpen(false);
+                }}
+                onOpenFile={(file) => {
+                   setSelectedFile(file);
+                   if (window.innerWidth < 1280) setIsCopilotOpen(false);
+                }}
+                onOpenSettings={() => handleTabChange("settings")}
+                onCreateFile={handleCreateFile}
+                onUpdateFile={handleUpdateFile}
+                onDeleteFile={handleDeleteFile}
+                onCreateFolder={handleCreateFolder}
+                onSessionChange={setCurrentSessionId}
+              />
+            </motion.div>
           </>
         )}
       </AnimatePresence>
 
-      <div 
-        className={cn(
-          "fixed bottom-0 left-0 right-0 h-[85vh] rounded-t-lg md:relative md:h-full md:w-[380px] md:rounded-none z-[90] md:z-auto transition-transform duration-300",
-          !showCopilot && "translate-y-full md:translate-y-0 md:hidden",
-          activeTab === "settings" && "hidden md:hidden",
-          "bg-white border-t md:border-t-0 md:border-l border-neutral-200 overflow-hidden flex flex-col"
-        )}
-      >
-        <div className="md:hidden absolute top-4 right-4 z-[100]">
-          <button onClick={() => setIsCopilotOpen(false)} className="p-2 bg-neutral-100 rounded-full">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        <AICopilot 
-          ref={aiCopilotRef}
-          profile={profile} 
-          currentPath={currentPath}
-          currentFolderId={currentFolderId}
-          files={files}
-          sessionId={currentSessionId}
-          apiKey={geminiKey}
-          onNavigate={(id) => {
-            setActiveTab("workspace");
-            setCurrentFolderId(id);
-            if (window.innerWidth < 768) setIsCopilotOpen(false);
-          }}
-          onOpenFile={setSelectedFile}
-          onOpenSettings={() => setActiveTab("settings")}
-          onCreateFile={handleCreateFile}
-          onUpdateFile={handleUpdateFile}
-          onDeleteFile={handleDeleteFile}
-          onCreateFolder={handleCreateFolder}
-          onSessionChange={setCurrentSessionId}
-        />
-      </div>
-      {/* Voice Assistant Implementation */}
       <VoiceAssistant 
         ref={voiceAssistantRef}
         files={files}

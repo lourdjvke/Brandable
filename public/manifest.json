@@ -1,0 +1,33 @@
+{
+  "name": "Brandable AI",
+  "short_name": "Brandable",
+  "description": "AI-powered workspace for creators.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f9fa",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3670/3670151.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Open Copilot",
+      "short_name": "Copilot",
+      "description": "Jump straight into AI chat",
+      "url": "/copilot",
+      "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/3670/3670151.png", "sizes": "512x512" }]
+    },
+    {
+      "name": "New Brainstorm",
+      "short_name": "Brainstorm",
+      "description": "Start a new brainstorm session",
+      "url": "/new/brainstorm",
+      "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/3670/3670151.png", "sizes": "512x512" }]
+    }
+  ]
+}

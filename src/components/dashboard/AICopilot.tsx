@@ -89,6 +89,7 @@ function MessageBubble({
   onSpeak: (text: string) => void;
   onRetry: () => void;
 }) {
+  if (!msg) return null;
   const [isExpanded, setIsExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   
@@ -493,6 +494,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
 
       for (let i = lastDoneIndex + 1; i < messages.length; i++) {
         const msg = messages[i];
+        if (!msg) continue;
         
         const commandLines = msg.content?.split('\n').filter(line => {
           const t = line.trim().toLowerCase();
@@ -811,7 +813,12 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   };
 
   const saveMessage = async (sessionId: string, message: Omit<ChatMessage, "id">) => {
-    const newMessage = { ...message, id: Date.now().toString() };
+    // Clean up the message object to remove undefined values which Firestore doesn't support
+    const cleanMessage = Object.fromEntries(
+      Object.entries(message).filter(([_, v]) => v !== undefined)
+    ) as Omit<ChatMessage, "id">;
+
+    const newMessage = { ...cleanMessage, id: Date.now().toString() };
     const sessionRef = doc(db, "chatSessions", sessionId);
     
     try {
@@ -828,7 +835,12 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       return [newMessage];
     } catch (err) {
       console.error("Error saving message:", err);
-      return [];
+      // Fallback: return existing messages + the new one even if save failed to keep UI moving
+      const session = sessions.find(s => s.id === sessionId);
+      if (session) {
+        return [...(session.messages || []), newMessage];
+      }
+      return [newMessage];
     }
   };
 
@@ -1154,8 +1166,8 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             }
           ];
 
-          const history = currentMessages.slice(0, -1)
-            .filter(m => m.role === "user" || m.role === "assistant")
+          const history = (currentMessages || []).slice(0, -1)
+            .filter(m => m && (m.role === "user" || m.role === "assistant"))
             .map(m => ({
               role: m.role === "assistant" ? "model" as const : "user" as const,
               parts: [{ text: m.content || "" }]
@@ -1164,15 +1176,23 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           let firstUserIndex = history.findIndex(h => h.role === "user");
           const finalHistory = firstUserIndex !== -1 ? history.slice(firstUserIndex) : [];
 
+          if (!currentMessages || currentMessages.length === 0) {
+            throw new Error("No messages to send");
+          }
+
           const lastMsg = currentMessages[currentMessages.length - 1];
           // If the last message is a system message (e.g. from command execution marker), 
           // we need to find the last actual user message for the main prompt
           let lastUserMsg = lastMsg;
-          if (lastUserMsg.role !== "user") {
-            const lastUserIdx = [...currentMessages].reverse().findIndex(m => m.role === "user");
+          if (lastUserMsg && lastUserMsg.role !== "user") {
+            const lastUserIdx = [...currentMessages].reverse().findIndex(m => m && m.role === "user");
             if (lastUserIdx !== -1) {
               lastUserMsg = currentMessages[currentMessages.length - 1 - lastUserIdx];
             }
+          }
+
+          if (!lastUserMsg) {
+            throw new Error("No user message found in history");
           }
 
           const lastMsgParts: any[] = [{ text: lastUserMsgContent || "" }];

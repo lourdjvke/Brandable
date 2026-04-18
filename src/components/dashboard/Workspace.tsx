@@ -124,10 +124,10 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
       (f.parentId || null) === currentFolderId && 
       f.name.toLowerCase().includes(searchQuery.toLowerCase())
     )
-    .sort((a, b) => b.createdAt - a.createdAt);
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 
   const folders = filteredFiles.filter(f => f.type === "folder");
-  const recentFiles = filteredFiles.filter(f => f.type !== "folder").slice(0, 10);
+  const recentFiles = filteredFiles.filter(f => f.type !== "folder").slice(0, 15);
 
   if (selectedFile) {
     return <FileEditor file={selectedFile} onBack={() => setSelectedFile(null)} profile={profile} />;
@@ -142,9 +142,9 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
         <div className="relative">
           <button 
             onClick={() => setShowCreateMenu(!showCreateMenu)}
-            className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-xl text-sm font-medium text-blue-600 hover:bg-blue-100 transition-colors"
+            className="flex items-center gap-2 bg-white/50 backdrop-blur-md border border-neutral-200 px-4 py-2 rounded-xl text-sm font-bold text-neutral-900 hover:bg-neutral-100 transition-all shadow-sm active:scale-95"
           >
-            <Plus className="w-4 h-4" /> Add file
+            <Plus className="w-4 h-4" /> Add dynamic file
           </button>
           <AnimatePresence>
             {showCreateMenu && (
@@ -152,7 +152,7 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
                 initial={{ opacity: 0, y: 5, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 5, scale: 0.98 }}
-                className="absolute left-0 mt-2 w-48 bg-white border border-neutral-200 rounded-md p-1 z-50"
+                className="absolute left-0 mt-2 w-56 bg-white border border-neutral-100 rounded-2xl p-1.5 z-50 shadow-2xl"
               >
                 {[
                   { type: "folder", label: "New Folder", icon: <Folder className="w-4 h-4" /> },
@@ -167,12 +167,12 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
                       setCreateModalState({ isOpen: true, type: item.type as FileType });
                       setShowCreateMenu(false);
                     }}
-                    className="w-full flex items-center gap-3 px-2 py-1.5 hover:bg-neutral-100 rounded-lg text-sm transition-colors"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-neutral-50 rounded-xl text-sm transition-colors text-left font-semibold text-neutral-600 hover:text-neutral-900"
                   >
-                    <div className="w-6 h-6 rounded-lg bg-neutral-100 flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-lg bg-neutral-50 flex items-center justify-center">
                       {item.icon}
                     </div>
-                    <span className="font-medium">{item.label}</span>
+                    <span>{item.label}</span>
                   </button>
                 ))}
               </motion.div>
@@ -245,34 +245,32 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
         </div>
       )}
 
-      {/* Recent Files List */}
-      <div className="mt-4 px-4 flex flex-col gap-2">
-        <h2 className="text-lg font-semibold">Recent Files</h2>
+      {/* Recent Files Grid */}
+      <div className="mt-8 px-4 flex flex-col gap-4">
+        <h2 className="text-xl font-bold tracking-tight">Recent Files</h2>
 
-        <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <AnimatePresence mode="popLayout">
-            {recentFiles.map(file => (
+            {recentFiles.map((file, idx) => (
               <motion.div
                 key={file.id}
-                initial={{ opacity: 0.3, scale: 0.85, filter: "blur(10px)" }}
-                whileInView={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-                viewport={{ once: false, amount: 0.95, margin: "0px" }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-                className="w-full origin-center"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: idx * 0.05 }}
               >
-                <FileNotificationCard 
+                <FileGridCard 
                   file={file} 
                   onClick={() => setSelectedFile(file)} 
                   onDelete={() => setDeleteModalState({ isOpen: true, fileId: file.id })}
                 />
               </motion.div>
             ))}
-            {recentFiles.length === 0 && !loading && (
-              <div className="flex flex-col items-center justify-center py-10 text-neutral-400">
-                <p className="text-sm font-medium">No recent files</p>
-              </div>
-            )}
           </AnimatePresence>
+          {recentFiles.length === 0 && !loading && (
+            <div className="col-span-full flex flex-col items-center justify-center py-20 text-neutral-400 bg-white rounded-3xl border border-dashed border-neutral-200">
+              <p className="text-sm font-bold uppercase tracking-widest opacity-50">Empty Workspace</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -330,16 +328,14 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
   );
 }
 
-function FileNotificationCard({ file, onClick, onDelete }: { file: FileItem; onClick: () => void; onDelete: () => void }) {
-  const [expanded, setExpanded] = useState(false);
-
+function FileGridCard({ file, onClick, onDelete }: { file: FileItem; onClick: () => void; onDelete: () => void }) {
   const getIcon = () => {
     switch (file.type) {
-      case "script": return <Edit3 className="w-5 h-5" />;
-      case "caption": return <MessageSquare className="w-5 h-5" />;
-      case "thread": return <Twitter className="w-5 h-5" />;
-      case "brainstorm": return <BrainCircuit className="w-5 h-5" />;
-      default: return <FileText className="w-5 h-5" />;
+      case "script": return <Edit3 className="w-4 h-4" />;
+      case "caption": return <MessageSquare className="w-4 h-4" />;
+      case "thread": return <Twitter className="w-4 h-4" />;
+      case "brainstorm": return <BrainCircuit className="w-4 h-4" />;
+      default: return <FileText className="w-4 h-4" />;
     }
   };
 
@@ -362,84 +358,58 @@ function FileNotificationCard({ file, onClick, onDelete }: { file: FileItem; onC
   };
 
   const getPreviewText = (htmlContent: string) => {
-    if (!htmlContent) return 'Empty file...';
+    if (!htmlContent) return 'Empty content...';
     try {
-      // First, strip anything that looks like a base64 string completely out to avoid huge text blocks
       const withoutBase64 = htmlContent.replace(/data:image\/[a-zA-Z]*;base64,[^\s"']+/g, '[Image]');
-      // Strip gallery data arrays
       const withoutGalleryJSON = withoutBase64.replace(/data-images='\[.*?\]'/g, '');
-      // Strip remaining HTML tags
       let text = withoutGalleryJSON.replace(/<[^>]+>/g, ' ').trim();
-      text = text.replace(/\s+/g, ' '); // collapse extra whitespace
-      if (text.length > 100) return text.substring(0, 100) + '...';
-      return text || 'Empty file...';
+      text = text.replace(/\s+/g, ' '); 
+      if (text.length > 70) return text.substring(0, 70) + '...';
+      return text || 'Empty content...';
     } catch {
-      return 'Empty file...';
+      return 'Empty content...';
     }
   };
 
   return (
-    <motion.div 
-      layout
-      className="bg-white rounded-2xl p-3 border border-neutral-200 flex flex-col gap-2"
+    <div 
+      onClick={onClick}
+      className="group bg-white rounded-3xl border border-neutral-100 p-4 flex flex-col gap-4 cursor-pointer hover:border-neutral-200 transition-all hover:translate-y-[-2px] active:translate-y-0"
     >
-      <div className="flex items-start gap-3 relative group/card">
-        <div 
-          className="flex flex-1 items-start gap-3 cursor-pointer" 
-          onClick={() => setExpanded(!expanded)}
-        >
-          <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0", getBgColor())}>
-            {getIcon()}
-          </div>
-          <div className="flex-1 flex flex-col pt-0.5">
-            <div className="flex justify-between items-center">
-              <h3 className="font-semibold text-sm">{file.name}</h3>
-              <span className="text-xs text-neutral-400 font-medium">{timeAgo(file.updatedAt)}</span>
-            </div>
-            <p className="text-xs text-neutral-500 mt-0.5 line-clamp-1 font-medium">
-              {getPreviewText(file.content)}
-            </p>
-          </div>
+      <div className="flex justify-between items-start">
+        <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-black/5", getBgColor())}>
+          {getIcon()}
         </div>
-
         <button
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
           }}
-          className="absolute -top-1 -right-1 p-1.5 bg-neutral-100 border border-neutral-200 text-neutral-400 hover:text-red-500 hover:bg-neutral-50 rounded-full opacity-0 group-hover/card:opacity-100 transition-all shadow-sm z-10"
+          className="p-2 text-neutral-300 hover:text-red-500 transition-colors"
         >
-          <Trash2 className="w-3 h-3" />
+          <Trash2 className="w-4 h-4" />
         </button>
       </div>
-      
-      <AnimatePresence>
-        {expanded && (
-          <motion.div 
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="pt-2 border-t border-neutral-100 mt-1 cursor-pointer relative group/img" onClick={onClick}>
-              <img 
-                src={file.headerImage || ILLUSTRATIONS.boyAndGirlHoldingPen} 
-                className="w-full h-48 object-cover rounded-sm bg-neutral-100" 
-                referrerPolicy="no-referrer"
-              />
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-                className="absolute bottom-2 right-2 p-1.5 bg-red-500/80 hover:bg-red-500 text-white rounded-full opacity-0 group-hover/img:opacity-100 transition-all backdrop-blur-sm shadow-sm"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+
+      <div className="space-y-1">
+        <div className="flex justify-between items-center gap-2">
+          <h3 className="font-bold text-sm truncate text-neutral-900">{file.name}</h3>
+          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider shrink-0">{timeAgo(file.updatedAt)}</span>
+        </div>
+        <p className="text-xs text-neutral-500 line-clamp-2 font-medium leading-relaxed">
+          {getPreviewText(file.content)}
+        </p>
+      </div>
+
+      <div className="relative aspect-video rounded-2xl overflow-hidden bg-neutral-50 border border-neutral-50">
+        <img 
+          src={file.headerImage || ILLUSTRATIONS.boyAndGirlHoldingPen} 
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 
+          referrerPolicy="no-referrer"
+          alt={file.name}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+    </div>
   );
 }
