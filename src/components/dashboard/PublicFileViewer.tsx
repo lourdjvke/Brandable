@@ -3,35 +3,67 @@ import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/src/lib/firebase";
 import { FileItem } from "@/src/types";
 import Loader from "@/src/components/ui/Loader";
+import { marked } from "marked";
 
-const renderContentHTML = (html: string) => {
-  if (!html) return "";
+const renderContentHTML = (content: string) => {
+  if (!content) return "";
   
-  // Find all gallery divs and turn them into CSS Grid layouts for pure HTML rendering
-  const parsed = html.replace(/<div data-type="gallery" data-images='([^']*)'><\/div>/g, (match, imagesJson) => {
+  let html = content;
+
+  // 1. Support the :::gallery syntax just like the editor's preprocessMarkdown
+  html = html.replace(/:::gallery\n([\s\S]*?)\n:::/g, (match, urls) => {
+    const images = urls.trim().split('\n').filter(Boolean);
+    return `<div data-type="gallery" data-images="${JSON.stringify(images).replace(/"/g, '&quot;')}"></div>`;
+  });
+
+  // 2. If it doesn't look like HTML, or it was markdown that was just partially converted, run it through marked
+  if (!html.trim().startsWith('<') || html.includes('\n#') || html.includes('\n- ')) {
+    html = marked.parse(html) as string;
+  }
+
+  // 3. Robust Gallery Parsing
+  // This regex catches any div with data-type="gallery", regardless of other attributes or order
+  const divRegex = /<div\s+([^>]*data-type="gallery"[^>]*)>\s*<\/div>/g;
+  html = html.replace(divRegex, (match, allAttrs) => {
     try {
-      const images: string[] = JSON.parse(imagesJson);
+      // Find data-images attribute (handle both double and single quotes)
+      const imagesMatch = allAttrs.match(/data-images="([^"]*)"/) || allAttrs.match(/data-images='([^']*)'/);
+      if (!imagesMatch) return match;
+      
+      const imagesJson = imagesMatch[1];
+      const escapedJson = imagesJson.replace(/&quot;/g, '"');
+      const images: string[] = JSON.parse(escapedJson).filter((src: string) => src && src.trim() !== "");
       const count = images.length;
       
+      if (count === 0) return "";
+
       const gridClass = count === 1 ? 'grid-cols-1' : count === 2 ? 'grid-cols-2' : count >= 3 ? 'grid-cols-3' : '';
       
-      const imageHTML = images.map((src, i) => {
+      const imageHTML = images.map((src: string, i: number) => {
         let spanClass = "";
-        if (count === 3 && i === 0) spanClass = "col-span-2 row-span-2";
-        else if (count === 5 && i < 2) spanClass = "col-span-1";
+        let aspectClass = "aspect-square";
         
-        return `<div class="relative rounded-2xl overflow-hidden bg-neutral-100 aspect-square ${spanClass}">
-                  <img src="${src}" style="width: 100%; height: 100%; object-fit: cover;" />
+        if (count === 3 && i === 0) {
+          spanClass = "col-span-2 row-span-2";
+          aspectClass = "aspect-auto";
+        } else if (count === 5 && i < 2) {
+          spanClass = "col-span-1";
+        }
+        
+        // Add referrerPolicy to prevent broken images from restricted hosts
+        return `<div class="relative rounded-2xl overflow-hidden bg-neutral-100 ${aspectClass} ${spanClass}">
+                  <img src="${src}" class="w-full h-full object-cover transition-transform duration-500 hover:scale-105" referrerPolicy="no-referrer" />
                 </div>`;
       }).join('');
 
       return `<div class="my-6 grid gap-2 clear-both ${gridClass}">${imageHTML}</div>`;
     } catch(e) {
+      console.error("Gallery parsing error:", e);
       return match;
     }
   });
 
-  return parsed;
+  return html;
 };
 
 export default function PublicFileViewer({ userId, fileId }: { userId: string; fileId: string }) {
@@ -79,28 +111,42 @@ export default function PublicFileViewer({ userId, fileId }: { userId: string; f
   }
 
   return (
-    <div className="min-h-screen w-screen bg-white text-black overflow-y-auto hide-scrollbar">
-      <div className="max-w-4xl mx-auto w-full p-8 md:p-12 lg:p-24 selection:bg-neutral-200">
+    <div className="min-h-screen w-screen bg-white text-black overflow-y-auto hide-scrollbar selection:bg-neutral-100">
+      <div className="max-w-3xl mx-auto px-6 py-12 md:py-20 lg:py-32">
         
-        {file.headerImage && (
-          <div className="w-full h-48 md:h-64 lg:h-80 overflow-hidden rounded-3xl mb-12">
-            <img 
-              src={file.headerImage} 
-              alt="Header" 
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-            />
+        {/* Tags (Mirroring Editor) */}
+        {file.tags && file.tags.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-10">
+            {file.tags.map(tag => (
+              <span 
+                key={tag.id} 
+                className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 border border-neutral-100 shadow-sm"
+                style={{ backgroundColor: `${tag.color}15`, color: tag.color }}
+              >
+                <div className="w-1 h-1 rounded-full" style={{ backgroundColor: tag.color }}></div>
+                {tag.name}
+              </span>
+            ))}
           </div>
         )}
-        
-        <h1 className="text-4xl md:text-5xl font-light tracking-tight mb-12 leading-tight">
+
+        {/* Name as Title */}
+        <h1 className="text-4xl md:text-5xl lg:text-6xl font-light tracking-tight mb-12 leading-[1.1] text-neutral-900">
           {file.name}
         </h1>
 
-        <div className="tiptap prose prose-neutral max-w-none font-light leading-relaxed prose-img:rounded-2xl prose-img:shadow-sm prose-img:border prose-img:border-neutral-100"
+        {/* Content */}
+        <div className="tiptap prose prose-neutral max-w-none font-light leading-relaxed prose-img:rounded-2xl prose-img:shadow-sm prose-img:border prose-img:border-neutral-100 text-neutral-800"
              dangerouslySetInnerHTML={{ __html: renderContentHTML(file.content || "") }}
         />
         
+        {/* Simple Footer */}
+        <div className="mt-32 pt-8 border-t border-neutral-50 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-neutral-100 border border-neutral-200" />
+            <span className="text-xs text-neutral-400 font-medium tracking-tight">Published via AIS Studio</span>
+          </div>
+        </div>
       </div>
     </div>
   );

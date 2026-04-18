@@ -95,7 +95,25 @@ const BlogImageComponent = (props: any) => {
 const CustomImage = Image.extend({
   addNodeView() {
     return ReactNodeViewRenderer(BlogImageComponent);
-  }
+  },
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      src: {
+        default: null,
+      },
+    }
+  },
+  parseHTML() {
+    return [
+      {
+        tag: 'img[src]',
+      },
+    ]
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['img', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes)]
+  },
 });
 
 const BentoGalleryComponent = (props: any) => {
@@ -105,6 +123,7 @@ const BentoGalleryComponent = (props: any) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+     console.log("BentoGalleryComponent handleUpload triggered");
      const file = e.target.files?.[0];
      if (!file) return;
      const base64 = await compressImage(file);
@@ -112,6 +131,7 @@ const BentoGalleryComponent = (props: any) => {
      if (slotIndexRef.current !== null) {
         newImages[slotIndexRef.current] = base64;
      }
+     console.log("BentoGalleryComponent updating images:", newImages);
      updateAttributes({ images: newImages });
   };
 
@@ -182,7 +202,16 @@ const GalleryExtension = Node.create({
     return {
       images: {
         default: [],
-        parseHTML: element => JSON.parse(element.getAttribute('data-images') || '[]'),
+        parseHTML: element => {
+          const attr = element.getAttribute('data-images') || '[]';
+          console.log("GalleryExtension parseHTML attribute:", attr);
+          try {
+            return JSON.parse(attr);
+          } catch(e) {
+            console.error("GalleryExtension parseHTML parse error:", attr, e);
+            return [];
+          }
+        },
         renderHTML: attributes => ({
           'data-images': JSON.stringify(attributes.images),
         })
@@ -220,7 +249,7 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
   const preprocessMarkdown = (markdown: string) => {
     let html = markdown.replace(/:::gallery\n([\s\S]*?)\n:::/g, (match, urls) => {
       const images = urls.trim().split('\n').filter(Boolean);
-      return `<div data-type="gallery" data-images='${JSON.stringify(images)}'></div>`;
+      return `<div data-type="gallery" data-images="${JSON.stringify(images).replace(/"/g, '&quot;')}"></div>`;
     });
     // Use marked to basic HTML if not already HTML
     if (!html.includes('<') || html.includes(':::gallery')) {
