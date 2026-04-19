@@ -22,14 +22,15 @@ const renderContentHTML = (content: string) => {
   }
 
   // 3. Robust Gallery Parsing
-  const divRegex = /<div\s+([^>]*data-type="gallery"[^>]*)>\s*<\/div>/g;
-  html = html.replace(divRegex, (match, allAttrs) => {
+  // Look for any element (div, bento-gallery, etc.) with data-images or data-images-gallery attributes
+  const divRegex = /<([a-z0-9-]+)\s+([^>]*data-images=["'][^>]*|[^>]*data-type="gallery"[^>]*)>\s*<\/\1>/g;
+  html = html.replace(divRegex, (match, tagName, allAttrs) => {
     try {
-      const imagesMatch = allAttrs.match(/data-images="([^"]*)"/) || allAttrs.match(/data-images='([^']*)'/);
+      const imagesMatch = allAttrs.match(/data-images=(["'])(.*?)\1/) || allAttrs.match(/data-images-gallery=(["'])(.*?)\1/);
       if (!imagesMatch) return match;
       
-      const imagesJson = imagesMatch[1];
-      const escapedJson = imagesJson.replace(/&quot;/g, '"');
+      const imagesJson = imagesMatch[2];
+      const escapedJson = imagesJson.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").replace(/&#34;/g, '"');
       const images: string[] = JSON.parse(escapedJson).filter((src: string) => src && src.trim() !== "");
       const count = images.length;
       
@@ -67,7 +68,7 @@ const extractAllImages = (content: string): string[] => {
   if (!content) return [];
   const images: string[] = [];
   
-  // Extract from :::gallery blocks
+  // 1. Extract from :::gallery markdown blocks
   const galleryRegex = /:::gallery\n([\s\S]*?)\n:::/g;
   let match;
   while ((match = galleryRegex.exec(content)) !== null) {
@@ -75,28 +76,43 @@ const extractAllImages = (content: string): string[] => {
     images.push(...urls);
   }
 
-  // Extract from standard markdown images ![alt](url)
+  // 2. Extract from standard markdown images ![alt](url) or HTML img tags
   const mdImageRegex = /!\[.*?\]\((.*?)\)/g;
   while ((match = mdImageRegex.exec(content)) !== null) {
     images.push(match[1]);
   }
 
-  // Extract from HTML img tags
-  const htmlImgRegex = /<img.*?src=["'](.*?)["'].*?>/g;
+  const htmlImgRegex = /<img[^>]+src=["'](.*?)["'].*?>/g;
   while ((match = htmlImgRegex.exec(content)) !== null) {
     images.push(match[1]);
   }
 
-  // Extract from gallery divs if content was already partially processed
-  const divRegex = /data-images="([^"]*)"/g;
-  while ((match = divRegex.exec(content)) !== null) {
+  // 3. Extract from gallery nodes (TipTap bentoGallery or custom markdown-to-html divs)
+  // Look for any data-images attribute with any quote style in any tag
+  const anyImagesAttrRegex = /data-(?:images|gallery-images|bento-images)=(["'])(.*?)\1/g;
+  while ((match = anyImagesAttrRegex.exec(content)) !== null) {
     try {
-      const urls = JSON.parse(match[1].replace(/&quot;/g, '"'));
-      if (Array.isArray(urls)) images.push(...urls);
+      let raw = match[2];
+      // Decode HTML entities
+      raw = raw.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#39;/g, "'").replace(/&#34;/g, '"');
+      const urls = JSON.parse(raw);
+      if (Array.isArray(urls)) {
+        images.push(...urls);
+      } else if (typeof urls === 'string') {
+        images.push(urls);
+      }
     } catch(e) {}
   }
 
-  return Array.from(new Set(images.filter(src => src && src.trim() !== "")));
+  return Array.from(new Set(images.filter(src => {
+    // Only keep non-empty strings that look like valid image sources
+    return src && typeof src === 'string' && src.trim() !== "" && (
+      src.startsWith('http') || 
+      src.startsWith('https') || 
+      src.startsWith('data:image') || 
+      src.startsWith('/')
+    );
+  })));
 };
 
 export default function PublicFileViewer({ userId, fileId }: { userId: string; fileId: string }) {
@@ -180,14 +196,6 @@ export default function PublicFileViewer({ userId, fileId }: { userId: string; f
             <div className="tiptap prose prose-neutral max-w-none font-light leading-relaxed prose-img:rounded-2xl prose-img:shadow-sm prose-img:border prose-img:border-neutral-100 text-neutral-800"
                  dangerouslySetInnerHTML={{ __html: renderContentHTML(file.content || "") }}
             />
-            
-            {/* Simple Footer */}
-            <div className="mt-32 pt-8 border-t border-neutral-50 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-neutral-100 border border-neutral-200" />
-                <span className="text-xs text-neutral-400 font-medium tracking-tight">Published via AIS Studio</span>
-              </div>
-            </div>
           </div>
 
           {/* Sidebar Column (Desktop Only) */}
