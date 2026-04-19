@@ -245,6 +245,7 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
 
   const initialContent = useRef(file.content || "");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [extractedImages, setExtractedImages] = useState<string[]>([]);
 
   const preprocessMarkdown = (markdown: string) => {
     let html = markdown.replace(/:::gallery\n([\s\S]*?)\n:::/g, (match, urls) => {
@@ -275,6 +276,24 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
       },
     },
   });
+
+  useEffect(() => {
+    if (!editor) return;
+    const updateGallerySummary = () => {
+      const imgs: string[] = [];
+      editor.state.doc.descendants((node: any) => {
+        if (node.type.name === 'image' && node.attrs.src) imgs.push(node.attrs.src);
+        if (node.type.name === 'bentoGallery') {
+          (node.attrs.images || []).forEach((src: string) => src && imgs.push(src));
+        }
+      });
+      // De-duplicate if same image used twice
+      setExtractedImages(Array.from(new Set(imgs)));
+    };
+    updateGallerySummary();
+    editor.on('update', updateGallerySummary);
+    return () => { editor.off('update', updateGallerySummary); };
+  }, [editor]);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "files", file.id), (docSnap) => {
@@ -530,67 +549,106 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto no-scrollbar" ref={scrollRef}>
-        <div className="max-w-3xl mx-auto px-6 py-12">
-          {/* Tags */}
-          <div className="flex flex-wrap items-center gap-2 mb-10">
-            {tags.map(tag => (
-              <span 
-                key={tag.id} 
-                className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"
-                style={{ backgroundColor: `${tag.color}15`, color: tag.color }}
-              >
-                {tag.name}
-                <button onClick={() => removeTag(tag.id)} className="hover:opacity-50 transition-opacity"><X className="w-3 h-3" /></button>
-              </span>
-            ))}
-            
-            <div className="relative">
-              <button 
-                onClick={() => setShowTagMenu(!showTagMenu)}
-                className="w-7 h-7 rounded-lg bg-neutral-50 border border-neutral-100 flex items-center justify-center text-neutral-400 hover:text-black transition-colors"
-                title="Add tag"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
+      <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 overflow-y-auto no-scrollbar scroll-smooth" ref={scrollRef}>
+          <div className="max-w-3xl mx-auto px-6 py-12">
+            {/* Tags */}
+            <div className="flex flex-wrap items-center gap-2 mb-10">
+              {tags.map(tag => (
+                <span 
+                  key={tag.id} 
+                  className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"
+                  style={{ backgroundColor: `${tag.color}15`, color: tag.color }}
+                >
+                  {tag.name}
+                  <button onClick={() => removeTag(tag.id)} className="hover:opacity-50 transition-opacity"><X className="w-3 h-3" /></button>
+                </span>
+              ))}
               
-              <AnimatePresence>
-                {showTagMenu && (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    className="absolute top-full left-0 mt-2 p-1.5 bg-white rounded-xl shadow-2xl border border-neutral-100 z-50 flex items-center gap-2"
-                  >
-                    <input 
-                      type="text" 
-                      value={newTagName}
-                      onChange={e => setNewTagName(e.target.value)}
-                      placeholder="Tag..."
-                      className="text-xs px-2 py-1.5 outline-none bg-neutral-50 rounded-lg w-24"
-                      onKeyDown={e => e.key === 'Enter' && addTag()}
-                      autoFocus
-                    />
-                    <button onClick={addTag} className="p-1.5 bg-black text-white rounded-lg"><Plus className="w-3.5 h-3.5" /></button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              <div className="relative">
+                <button 
+                  onClick={() => setShowTagMenu(!showTagMenu)}
+                  className="w-7 h-7 rounded-lg bg-neutral-50 border border-neutral-100 flex items-center justify-center text-neutral-400 hover:text-black transition-colors"
+                  title="Add tag"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+                
+                <AnimatePresence>
+                  {showTagMenu && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="absolute top-full left-0 mt-2 p-1.5 bg-white rounded-xl shadow-2xl border border-neutral-100 z-50 flex items-center gap-2"
+                    >
+                      <input 
+                        type="text" 
+                        value={newTagName}
+                        onChange={e => setNewTagName(e.target.value)}
+                        placeholder="Tag..."
+                        className="text-xs px-2 py-1.5 outline-none bg-neutral-50 rounded-lg w-24"
+                        onKeyDown={e => e.key === 'Enter' && addTag()}
+                        autoFocus
+                      />
+                      <button onClick={addTag} className="p-1.5 bg-black text-white rounded-lg"><Plus className="w-3.5 h-3.5" /></button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+
+            <div className="relative group min-h-[500px]">
+               <EditorContent editor={editor} />
+               <style>{`
+                 .ProseMirror p.is-editor-empty:first-child::before {
+                   color: #a3a3a3;
+                   content: attr(data-placeholder);
+                   float: left;
+                   height: 0;
+                   pointer-events: none;
+                 }
+               `}</style>
             </div>
           </div>
-
-          <div className="relative group min-h-[500px]">
-             <EditorContent editor={editor} />
-             <style>{`
-               .ProseMirror p.is-editor-empty:first-child::before {
-                 color: #a3a3a3;
-                 content: attr(data-placeholder);
-                 float: left;
-                 height: 0;
-                 pointer-events: none;
-               }
-             `}</style>
-          </div>
         </div>
+
+        {/* Gallery Sidebar - Desktop only */}
+        {extractedImages.length > 0 && (
+          <aside className="hidden lg:flex w-80 border-l border-neutral-50 bg-neutral-50/20 flex-col overflow-hidden">
+             <div className="p-6 border-b border-neutral-100 bg-white/50 backdrop-blur-sm">
+                <div className="px-2 py-1.5 bg-neutral-900 rounded-lg inline-flex items-center gap-2 mb-4">
+                   <ImageIcon className="w-3 h-3 text-white" />
+                   <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white">Gallery</span>
+                </div>
+                <h3 className="text-xl font-bold text-neutral-900 tracking-tight">Gallery Summary</h3>
+                <p className="text-xs text-neutral-400 font-medium mt-1">All visual assets in this document</p>
+             </div>
+             
+             <div className="flex-1 overflow-y-auto p-4 no-scrollbar">
+                <div className="columns-2 gap-3 space-y-3">
+                   {extractedImages.map((src, i) => (
+                     <motion.div 
+                       key={i}
+                       initial={{ opacity: 0, scale: 0.9 }}
+                       animate={{ opacity: 1, scale: 1 }}
+                       transition={{ delay: i * 0.05 }}
+                       className="relative group rounded-xl overflow-hidden border border-neutral-100 shadow-sm bg-white break-inside-avoid"
+                     >
+                       <img 
+                          src={src} 
+                          className="w-full h-auto transition-transform duration-500 group-hover:scale-110" 
+                          alt={`Gallery item ${i}`}
+                       />
+                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                          <Maximize2 className="w-4 h-4 text-white" />
+                       </div>
+                     </motion.div>
+                   ))}
+                </div>
+             </div>
+          </aside>
+        )}
       </div>
     </motion.div>
   );
