@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { Youtube, Tag, ArrowRight, Check, X, Loader2, Copy } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
-import { db } from "@/src/lib/firebase";
-import { doc, getDoc, collection, getDocs, writeBatch } from "firebase/firestore";
+import { rtdb } from "@/src/lib/firebase";
+import { ref, get, set, update, child } from "firebase/database";
 import { UserProfile } from "@/src/types";
 
 interface LinkYouTubeProps {
@@ -78,18 +78,20 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
     async function loadData() {
       if (!profile?.uid) return;
       try {
-        const docRef = doc(db, "youtube_channels", profile.uid);
-        const snap = await getDoc(docRef);
+        const dbRef = ref(rtdb);
+        const snap = await get(child(dbRef, `youtube_channels/${profile.uid}`));
         if (snap.exists()) {
-          setChannelData(snap.data());
-          const vRef = collection(db, "youtube_channels", profile.uid, "videos");
-          const vSnap = await getDocs(vRef);
-          const vids = vSnap.docs.map(d => d.data());
-          vids.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
-          setVideos(vids);
+          const data = snap.val();
+          setChannelData(data);
+          
+          if (data.videos) {
+            const vids = Object.values(data.videos);
+            vids.sort((a: any, b: any) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+            setVideos(vids);
+          }
         }
       } catch (err) {
-        console.error("Error loading YouTube data:", err);
+        console.error("Error loading YouTube data from Realtime Database:", err);
       } finally {
         setLoadingInitial(false);
       }
@@ -134,7 +136,10 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
         updatedAt: Date.now()
       };
 
-      const newVideos = entries.map(entry => {
+      const newVideos: Record<string, any> = {};
+      const videoList: any[] = [];
+      
+      entries.forEach(entry => {
         const title = entry.getElementsByTagName("title")[0]?.textContent || "Untitled";
         const link = entry.getElementsByTagName("link")[0]?.getAttribute("href") || "";
         const videoId = entry.getElementsByTagName("yt:videoId")[0]?.textContent || link.split('v=')[1];
@@ -143,8 +148,9 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
         const thumbnail = mediaGroup?.getElementsByTagName("media:thumbnail")[0]?.getAttribute("url") || "";
         const views = mediaGroup?.getElementsByTagName("media:statistics")[0]?.getAttribute("views") || "0";
 
-        return {
-          id: videoId || Math.random().toString(36).substr(2, 9),
+        const vidId = videoId || Math.random().toString(36).substr(2, 9);
+        const vidObj = {
+          id: vidId,
           title,
           link,
           pubDate: pubDate || new Date().toISOString(),
@@ -152,22 +158,20 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
           views: parseInt(views || "0", 10),
           updatedAt: Date.now()
         };
+        
+        newVideos[vidId] = vidObj;
+        videoList.push(vidObj);
       });
 
-      const batch = writeBatch(db);
-      const docRef = doc(db, "youtube_channels", profile.uid);
-      batch.set(docRef, newChannelData);
-
-      newVideos.forEach(v => {
-        const vRef = doc(collection(db, "youtube_channels", profile.uid, "videos"), v.id);
-        batch.set(vRef, v);
+      // Save to Realtime Database
+      await set(ref(rtdb, `youtube_channels/${profile.uid}`), {
+        ...newChannelData,
+        videos: newVideos
       });
-
-      await batch.commit();
 
       setChannelData(newChannelData);
-      newVideos.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
-      setVideos(newVideos);
+      videoList.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+      setVideos(videoList);
 
       if (isInitialSetup) setStep(3);
 

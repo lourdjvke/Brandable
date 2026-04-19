@@ -17,7 +17,8 @@ export default defineConfig(({mode}) => {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
           cleanupOutdatedCaches: true,
           clientsClaim: true,
-          skipWaiting: false, // Wait for user to trigger update
+          skipWaiting: false,
+          maximumFileSizeToCacheInBytes: 5242880,
         },
         manifest: {
           name: 'Brandable OS',

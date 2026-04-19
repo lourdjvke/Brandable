@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useMemo, useImperativeHandle, forwardRef } from "react";
 import { UserProfile, ChatSession, ChatMessage, FileItem, FileType } from "@/src/types";
-import { db } from "@/src/lib/firebase";
-import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, deleteDoc, getDocs, orderBy, limit, arrayUnion } from "firebase/firestore";
-import { Copy, Send, Mic, Square, Settings, Plus, Image as ImageIcon, X, Loader2, ChevronRight, BrainCircuit, ChevronDown, User, Bot, MessageSquare, History, Volume2, RotateCcw, ExternalLink, ArrowDown, Check } from "lucide-react";
+import { db, rtdb } from "@/src/lib/firebase";
+import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, getDocs, where } from "firebase/firestore";
+import { ref as dbRef, onValue, set, push, update, remove, query as rtdbQuery, orderByChild, equalTo, get as dbGet, child } from "firebase/database";
+import { Copy, Send, Mic, Square, Settings, Plus, Image as ImageIcon, X, Loader2, ChevronRight, BrainCircuit, ChevronDown, User, Bot, MessageSquare, History, Volume2, RotateCcw, ExternalLink, ArrowDown, Check, Youtube } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
 import { GoogleGenAI, LiveServerMessage, Modality, Type, ThinkingLevel } from "@google/genai";
@@ -20,6 +21,7 @@ interface MessageLinkMetadata {
 }
 
 async function fetchUrlMetadata(url: string): Promise<MessageLinkMetadata> {
+  // First try the server-side API
   try {
     const res = await fetch("/api/link-preview", {
       method: "POST",
@@ -27,15 +29,63 @@ async function fetchUrlMetadata(url: string): Promise<MessageLinkMetadata> {
       body: JSON.stringify({ url })
     });
     const data = await res.json();
-    return {
-      url,
-      title: data.title || "N/A",
-      description: data.description || "N/A",
-      image: data.image
-    };
+    if (data && !data.error && data.title && data.title !== "N/A") {
+      return {
+        url,
+        title: data.title,
+        description: data.description || "",
+        image: data.image
+      };
+    }
   } catch (err) {
-    return { url, title: "N/A", description: "N/A" };
+    console.warn("API link preview failed, falling back to manual scrape");
   }
+
+  // Fallback: Manual scrape using proxies if API fails or returns N/A
+  try {
+    const PROXIES = [
+      (u: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+      (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+      (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`
+    ];
+
+    for (const proxyFn of PROXIES) {
+      try {
+        const proxyUrl = proxyFn(url);
+        const response = await fetch(proxyUrl);
+        if (!response.ok) continue;
+        
+        let html = "";
+        if (proxyUrl.includes('allorigins')) {
+          const json = await response.json();
+          html = json.contents;
+        } else {
+          html = await response.text();
+        }
+
+        if (!html || html.length < 100) continue;
+
+        const title = html.match(/<title>([^<]+)<\/title>/)?.[1] || 
+                      html.match(/og:title" content="([^"]+)"/)?.[1] || 
+                      new URL(url).hostname;
+        const description = html.match(/meta name="description" content="([^"]+)"/)?.[1] || 
+                            html.match(/og:description" content="([^"]+)"/)?.[1] || "";
+        const image = html.match(/og:image" content="([^"]+)"/)?.[1] || 
+                      html.match(/twitter:image" content="([^"]+)"/)?.[1];
+
+        return {
+          url,
+          title: title.trim(),
+          description: description.trim(),
+          image: image
+        };
+      } catch (e) { continue; }
+    }
+  } catch (e) {
+    console.error("Manual scrape error", e);
+  }
+
+  return { url, title: "Link", description: url };
 }
 
 function LinkPreview({ url }: { url: string }) {
@@ -81,13 +131,15 @@ function MessageBubble({
   viewingImage, 
   setViewingImage, 
   onSpeak, 
-  onRetry 
+  onRetry,
+  onAction
 }: { 
   msg: ChatMessage; 
   viewingImage: string | null; 
   setViewingImage: (url: string | null) => void;
   onSpeak: (text: string) => void;
   onRetry: () => void;
+  onAction?: (action: string, data: any) => void;
 }) {
   if (!msg) return null;
   const [isExpanded, setIsExpanded] = useState(false);
@@ -108,65 +160,170 @@ function MessageBubble({
 
   // Custom renderer for commands to make them UI appropriate
   const renderContent = (content: string) => {
-    const lines = content.split('\n');
-    return lines.map((line, i) => {
-      const trimmed = line.trim();
-      const isCommand = trimmed.toLowerCase().startsWith('command:') || 
-                        trimmed.startsWith('create_file') || 
-                        trimmed.startsWith('create_folder') || 
-                        trimmed.startsWith('update_file') || 
-                        trimmed.startsWith('delete_item') ||
-                        trimmed.startsWith('read_file') ||
-                        trimmed.startsWith('read_item') ||
-                        trimmed.startsWith('move_item') ||
-                        trimmed.startsWith('move_file') ||
-                        trimmed.startsWith('rename_item') ||
-                        trimmed.startsWith('rename_file') ||
-                        trimmed.startsWith('open_item') ||
-                        trimmed.startsWith('open_file') ||
-                        trimmed.startsWith('open_folder');
+    // Check for YouTube data payload
+    const ytMatch = content.match(/%YOUTUBE_DATA%([\s\S]*?)%END_YOUTUBE%/);
+    let ytVideos: any[] = [];
+    let displayContent = content;
 
-      if (isCommand) {
-        return (
-          <div key={i} className="my-2 bg-neutral-50 border border-neutral-200 rounded-md overflow-hidden">
-            <div 
-              className="flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-neutral-100 transition-colors"
-              onClick={() => setIsExpanded(!isExpanded)}
-            >
-              <div className="flex items-center gap-2 overflow-hidden">
-                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">CMD</span>
-                <span className={cn("text-xs font-mono text-neutral-600 truncate transition-all", !isExpanded && "max-w-[200px]")}>
-                  {trimmed.replace(/^command:\s*/, '')}
-                </span>
-              </div>
-              <ChevronDown className={cn("w-4 h-4 text-neutral-400 transition-transform", isExpanded && "rotate-180")} />
-            </div>
-            <AnimatePresence>
-              {isExpanded && (
-                <motion.div
-                  initial={{ height: 0 }}
-                  animate={{ height: "auto" }}
-                  exit={{ height: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="px-3 pb-3 pt-1 border-t border-neutral-100">
-                    <pre className="text-[11px] font-mono text-neutral-800 whitespace-pre-wrap break-all leading-relaxed">
-                      {trimmed}
-                    </pre>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        );
+    if (ytMatch) {
+      try {
+        ytVideos = JSON.parse(ytMatch[1]);
+        displayContent = content.replace(/%YOUTUBE_DATA%[\s\S]*?%END_YOUTUBE%/, "");
+      } catch (e) {
+        console.error("YouTube Data Parse Error", e);
       }
-      return (
-        <ReactMarkdown key={i} components={{ p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p> }}>
-          {line}
-        </ReactMarkdown>
-      );
+    }
+
+    // Check for Transcription payload
+    const transMatch = displayContent.match(/%TRANSCRIPTION%([\s\S]*?)%END_TRANSCRIPTION%/);
+    let transcriptionText = "";
+    if (transMatch) {
+      transcriptionText = transMatch[1].trim();
+      displayContent = displayContent.replace(/%TRANSCRIPTION%[\s\S]*?%END_TRANSCRIPTION%/, "\n\n*(Transcription moved to dedicated area below)*\n\n");
+    }
+
+    // Replace timestamps with clickable markdown links
+    displayContent = displayContent.replace(/%TIMESTAMP%(\[?\d{1,2}:\d{2}\]?)%END_TIMESTAMP%/gi, (match, time) => {
+       const cleanTime = time.replace(/[\[\]]/g, '');
+       return `[▶️ ${cleanTime}](timestamp:${cleanTime})`;
     });
+
+    const lines = displayContent.split('\n');
+    return (
+      <>
+        {lines.map((line, i) => {
+          const trimmed = line.trim();
+          const isCommand = trimmed.toLowerCase().startsWith('command:') || 
+                            trimmed.startsWith('create_file') || 
+                            trimmed.startsWith('create_folder') || 
+                            trimmed.startsWith('update_file') || 
+                            trimmed.startsWith('delete_item') ||
+                            trimmed.startsWith('read_file') ||
+                            trimmed.startsWith('move_item') ||
+                            trimmed.startsWith('rename_item') ||
+                            trimmed.startsWith('open_item');
+
+          if (isCommand) {
+            return (
+              <div key={i} className="my-2 bg-neutral-50 border border-neutral-200 rounded-md overflow-hidden text-left">
+                <div 
+                  className="flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-neutral-100 transition-colors"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                >
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                    <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">CMD</span>
+                    <span className={cn("text-xs font-mono text-neutral-600 truncate transition-all", !isExpanded && "max-w-[200px]")}>
+                      {trimmed.replace(/^command:\s*/, '')}
+                    </span>
+                  </div>
+                  <ChevronDown className={cn("w-4 h-4 text-neutral-400 transition-transform", isExpanded && "rotate-180")} />
+                </div>
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-3 pb-3 pt-1 border-t border-neutral-100">
+                        <pre className="text-[11px] font-mono text-neutral-800 whitespace-pre-wrap break-all leading-relaxed">
+                          {trimmed}
+                        </pre>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          }
+          return (
+            <ReactMarkdown key={i} components={{ 
+              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+              a: ({ href, children }) => {
+                if (href?.startsWith('timestamp:')) {
+                  const time = href.replace('timestamp:', '');
+                  return (
+                    <span 
+                      className="text-red-600 font-bold cursor-pointer hover:underline inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 bg-red-50 rounded"
+                      onClick={() => onAction?.('play_timestamp', time)}
+                    >
+                      <Youtube className="w-3 h-3" /> {children}
+                    </span>
+                  );
+                }
+                return <a href={href} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>
+              }
+            }}>
+              {line}
+            </ReactMarkdown>
+          );
+        })}
+
+        {transcriptionText && (
+          <div className="mt-4 p-5 bg-neutral-900 text-neutral-300 rounded-2xl border border-neutral-800 shadow-inner group-hover:shadow-lg transition-all">
+             <div className="flex items-center justify-between mb-4 border-b border-neutral-800 pb-3">
+                <div className="flex items-center gap-2">
+                   <div className="p-1.5 bg-red-600/10 rounded-lg">
+                      <Youtube className="w-4 h-4 text-red-500" />
+                   </div>
+                   <span className="text-xs font-bold uppercase tracking-[0.2em] text-white">Full Transcription</span>
+                </div>
+                <button 
+                  onClick={() => {
+                    const blob = new Blob([transcriptionText], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = "transcription.txt";
+                    a.click();
+                  }}
+                  className="text-[10px] font-bold uppercase text-neutral-500 hover:text-white transition-colors flex items-center gap-2"
+                >
+                  <Copy className="w-3 h-3" /> Save txt
+                </button>
+             </div>
+             <div className="text-xs font-mono leading-relaxed whitespace-pre-wrap max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                {transcriptionText}
+             </div>
+          </div>
+        )}
+
+        {ytVideos.length > 0 && (
+          <div className="mt-4 -mx-1">
+             <div className="flex gap-3 overflow-x-auto pb-4 px-1 custom-scrollbar snap-x snap-mandatory">
+                {ytVideos.map((video: any) => (
+                  <motion.div 
+                    key={video.id}
+                    whileHover={{ y: -4 }}
+                    onClick={() => onAction?.('watch_video', video)}
+                    className="w-48 shrink-0 bg-white border border-neutral-100 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer snap-start"
+                  >
+                    <div className="aspect-video relative bg-neutral-100">
+                      <img src={video.thumbnail} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <div className="absolute inset-0 bg-black/5 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                        <motion.div initial={{ scale: 0.5 }} whileHover={{ scale: 1 }} className="bg-white/90 p-2 rounded-full backdrop-blur-sm">
+                           <Youtube className="w-5 h-5 text-red-600" />
+                        </motion.div>
+                      </div>
+                      <div className="absolute bottom-1 right-1 bg-black/60 backdrop-blur-md px-1 py-0.5 rounded text-[8px] font-bold text-white uppercase">
+                        {video.views ? (video.views >= 1000 ? (video.views/1000).toFixed(1) + 'K' : video.views) : 0} views
+                      </div>
+                    </div>
+                    <div className="p-2 space-y-0.5">
+                      <h4 className="text-[10px] font-bold text-neutral-900 line-clamp-2 leading-tight">{video.title}</h4>
+                      <div className="flex items-center gap-1.5 opacity-50">
+                        <span className="text-[8px] font-bold uppercase tracking-wider">{new Date(video.pubDate).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+             </div>
+          </div>
+        )}
+      </>
+    );
   };
 
   return (
@@ -409,6 +566,8 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   }, [propSessionId]);
 
   const [attachedImages, setAttachedImages] = useState<{ url: string; file: File }[]>([]);
+  const [isWatchingVideo, setIsWatchingVideo] = useState(false);
+  const [activeVideoPlayer, setActiveVideoPlayer] = useState<{ videoId: string, timeSeconds: number } | null>(null);
   const [linkPreview, setLinkPreview] = useState<any>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
 
@@ -432,27 +591,20 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       urlToFetch = "https://" + urlToFetch;
     }
 
-    if (urlToFetch && (!linkPreview || linkPreview.url !== urlToFetch)) {
-        fetch("/api/link-preview", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ url: urlToFetch })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data && !data.error && data.title && data.title !== "N/A") {
-                setLinkPreview(data);
-            } else {
-                setLinkPreview(null);
-            }
-        })
-        .catch(() => setLinkPreview(null));
-    } else if (!urlToFetch) {
+    if (urlToFetch) {
+        if (!linkPreview || linkPreview.url !== urlToFetch) {
+            fetchUrlMetadata(urlToFetch).then(data => {
+                if (data && data.title && data.title !== "Link") {
+                    setLinkPreview(data);
+                } else {
+                    setLinkPreview(null);
+                }
+            }).catch(() => setLinkPreview(null));
+        }
+    } else {
         setLinkPreview(null);
     }
-  }, [debouncedInput, linkPreview]);
+  }, [debouncedInput]);
   const [selectedModel, setSelectedModel] = useState<string>("gemini-3-flash-preview");
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -564,9 +716,9 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
 
                 await onCreateFile(fileName, folderId, fileContent, fileType);
                 if (headerImage) {
-                   const filesSnap = await getDocs(query(collection(db, "files"), where("name", "==", fileName), where("parentId", "==", folderId)));
-                   if (!filesSnap.empty) {
-                     await onUpdateFile(filesSnap.docs[0].id, { headerImage });
+                   const matchingFiles = files.filter(f => f.name === fileName && f.parentId === folderId);
+                   if (matchingFiles.length > 0) {
+                     await onUpdateFile(matchingFiles[0].id, { headerImage });
                    }
                 }
               } else if (content.includes("create_folder")) {
@@ -753,36 +905,37 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   }, [currentSessionId]);
 
   useEffect(() => {
-    const testConnection = async () => {
-      try {
-        const { getDocFromServer } = await import("firebase/firestore");
-        await getDocFromServer(doc(db, "chatSessions", "connection-test"));
-      } catch (error: any) {
-        if (error.message?.includes("offline")) {
-          console.error("Firestore is offline. Please check your internet connection or Firebase configuration.");
-        }
-      }
-    };
-    testConnection();
-  }, []);
-
-  useEffect(() => {
-    onSessionChange(currentSessionId);
-  }, [currentSessionId, onSessionChange]);
-
-  useEffect(() => {
     if (!profile.uid) return;
-    const q = query(collection(db, "chatSessions"), where("ownerId", "==", profile.uid));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const sessionList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatSession))
-        .sort((a, b) => b.updatedAt - a.updatedAt);
-      setSessions(sessionList);
-      if (!currentSessionId && sessionList.length > 0 && !propSessionId) {
-        setCurrentSessionId(sessionList[0].id);
+
+    // Realtime Database listener for sessions
+    const sessionsRef = rtdbQuery(dbRef(rtdb, "chatSessions"), orderByChild("ownerId"), equalTo(profile.uid));
+    const unsubscribe = onValue(sessionsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const sessionList = Object.entries(data).map(([id, s]: [string, any]) => ({
+          ...s,
+          id,
+          messages: s.messages ? (Array.isArray(s.messages) ? s.messages : Object.values(s.messages)) : []
+        }));
+        sessionList.sort((a, b) => b.updatedAt - a.updatedAt);
+        setSessions(sessionList as ChatSession[]);
+        
+        if (!currentSessionIdRef.current && sessionList.length > 0 && !propSessionId) {
+          setCurrentSessionId(sessionList[0].id);
+        }
+      } else {
+        setSessions([]);
       }
     });
+
     return () => unsubscribe();
-  }, [profile.uid]);
+  }, [profile.uid, propSessionId]);
+
+  useEffect(() => {
+    if (onSessionChange && currentSessionId) {
+      onSessionChange(currentSessionId);
+    }
+  }, [currentSessionId, onSessionChange]);
 
   useEffect(() => {
     if (!currentSessionId) {
@@ -807,40 +960,53 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       updatedAt: Date.now(),
       messages: []
     };
-    const docRef = await addDoc(collection(db, "chatSessions"), newSession);
-    setCurrentSessionId(docRef.id);
+    const newRef = push(dbRef(rtdb, "chatSessions"));
+    await set(newRef, newSession);
+    setCurrentSessionId(newRef.key);
     setShowSessions(false);
   };
 
-  const saveMessage = async (sessionId: string, message: Omit<ChatMessage, "id">) => {
-    // Clean up the message object to remove undefined values which Firestore doesn't support
-    const cleanMessage = Object.fromEntries(
-      Object.entries(message).filter(([_, v]) => v !== undefined)
-    ) as Omit<ChatMessage, "id">;
+  const cleanObject = (obj: any): any => {
+    if (Array.isArray(obj)) {
+      return obj.map(cleanObject);
+    } else if (obj !== null && typeof obj === "object") {
+      return Object.entries(obj).reduce((acc: any, [key, value]) => {
+        if (value !== undefined) {
+          acc[key] = cleanObject(value);
+        }
+        return acc;
+      }, {});
+    }
+    return obj;
+  };
 
-    const newMessage = { ...cleanMessage, id: Date.now().toString() };
-    const sessionRef = doc(db, "chatSessions", sessionId);
+  const saveMessage = async (sessionId: string, message: Omit<ChatMessage, "id">) => {
+    const newMessage = { 
+      ...message, 
+      id: Date.now().toString() 
+    };
     
     try {
-      await updateDoc(sessionRef, {
-        messages: arrayUnion(newMessage),
+      // Fetch latest messages from DB to avoid staleness
+      const snapshot = await dbGet(child(dbRef(rtdb), `chatSessions/${sessionId}`));
+      const sessionData = snapshot.val();
+      const existingMessages = sessionData?.messages 
+        ? (Array.isArray(sessionData.messages) ? sessionData.messages : Object.values(sessionData.messages)) 
+        : [];
+      
+      const updatedMessages = cleanObject([...existingMessages, newMessage]);
+
+      await update(dbRef(rtdb, `chatSessions/${sessionId}`), {
+        messages: updatedMessages,
         updatedAt: Date.now()
       });
-      
-      // Return the updated messages for immediate use
-      const session = sessions.find(s => s.id === sessionId);
-      if (session) {
-        return [...(session.messages || []), newMessage];
-      }
-      return [newMessage];
+      return updatedMessages;
     } catch (err) {
-      console.error("Error saving message:", err);
-      // Fallback: return existing messages + the new one even if save failed to keep UI moving
+      console.error("Error saving message to Realtime Database:", err);
+      // Fallback to local optimistic update if DB fails
       const session = sessions.find(s => s.id === sessionId);
-      if (session) {
-        return [...(session.messages || []), newMessage];
-      }
-      return [newMessage];
+      const existingMessages = session?.messages || [];
+      return [...existingMessages, newMessage];
     }
   };
 
@@ -848,13 +1014,38 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
     try {
       if (!genAI) return;
       const response = await genAI.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Generate a short, concise title (max 4 words) for a chat that starts with: "${firstMessage}"`
+        model: "gemini-flash-latest",
+        contents: `Generate a short, concise title (max 4 words) for a chat that starts with: "${firstMessage}". Return only the title text.`
       });
       const title = response.text?.replace(/["']/g, "").trim() || "New Chat";
-      await updateDoc(doc(db, "chatSessions", sessionId), { title });
+      await update(dbRef(rtdb, `chatSessions/${sessionId}`), { title });
     } catch (err) {
-      console.error("Failed to generate title:", err);
+      console.error("Failed to generate title in RTDB:", err);
+    }
+  };
+
+  const fetchYouTubeData = async () => {
+    try {
+      const snap = await dbGet(child(dbRef(rtdb), `youtube_channels/${profile.uid}`));
+      if (snap.exists()) {
+        const data = snap.val();
+        if (!data.name) {
+          return { error: "YouTube connection is currently experiencing high traffic. Please try again in a bit." };
+        }
+        const vids = data.videos ? Object.values(data.videos) : [];
+        vids.sort((a: any, b: any = {}) => new Date(b.pubDate || 0).getTime() - new Date(a.pubDate || 0).getTime());
+        return {
+          channelName: data.name,
+          subscriberCount: data.subCount,
+          description: data.desc,
+          category: data.tag,
+          videos: vids
+        };
+      }
+      return { error: "YouTube connection is currently experiencing high traffic. Please try again in a bit." };
+    } catch (err) {
+      console.error("Error fetching YouTube data:", err);
+      return { error: "YouTube connection is currently experiencing high traffic. Please try again in a bit." };
     }
   };
 
@@ -899,8 +1090,9 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       updatedAt: Date.now(),
       content: content || ""
     };
-    const docRef = await addDoc(collection(db, "files"), newFile);
-    return docRef.id;
+    const newRef = push(dbRef(rtdb, "files"));
+    await set(newRef, newFile);
+    return newRef.key!;
   };
 
   const handleSend = async (retryContent?: string) => {
@@ -922,8 +1114,9 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
         updatedAt: Date.now(),
         messages: []
       };
-      const docRef = await addDoc(collection(db, "chatSessions"), newSession);
-      sessionId = docRef.id;
+      const newRef = push(dbRef(rtdb, "chatSessions"));
+      await set(newRef, newSession);
+      sessionId = newRef.key!;
       setCurrentSessionId(sessionId);
     }
 
@@ -977,15 +1170,14 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
     };
 
     const currentMessages = await saveMessage(sessionId, messageWithMeta);
+    setMessages(currentMessages);
     
-    const session = sessions.find(s => s.id === sessionId);
-    if (session && session.title === "New Chat") {
+    // Get fresh session data to check title
+    const sessionSnap = await dbGet(child(dbRef(rtdb), `chatSessions/${sessionId}`));
+    const session = sessionSnap.val();
+    if (session && (session.title === "New Chat" || !session.title)) {
       generateTitle(sessionId, userMsgContent);
     }
-
-    setInput("");
-    setAttachedImages([]);
-    setIsGenerating(true);
 
     try {
       const useRandomModel = localStorage.getItem("gemini_random_model") === "true";
@@ -1142,6 +1334,16 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               }
             },
             {
+              name: "get_youtube_data",
+              description: "Fetch the latest data and videos from the user's connected YouTube channel. Use this ONLY when explicitly asked to 'open connected youtube', 'show my videos', etc.",
+              parameters: {
+                type: Type.OBJECT,
+                properties: {
+                  limit: { type: Type.NUMBER, description: "Number of videos to fetch (max 15)" }
+                }
+              }
+            },
+            {
               name: "move_item",
               description: "Move a file or folder to a new parent folder. Use null or 'root' to move to root.",
               parameters: {
@@ -1196,6 +1398,17 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           }
 
           const lastMsgParts: any[] = [{ text: lastUserMsgContent || "" }];
+          
+          // Automatically extract YouTube URLs to pass as native video input
+          const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+          const match = (lastUserMsgContent || "").match(ytRegex);
+          let detectedVideoId = null;
+          if (match && match[1]) {
+            detectedVideoId = match[1];
+            setIsWatchingVideo(true);
+            lastMsgParts.push({ fileData: { mimeType: "video/mp4", fileUri: `https://www.youtube.com/watch?v=${detectedVideoId}` } });
+          }
+
           if (userMessage.imageUrls) {
             userMessage.imageUrls.forEach(url => {
               const base64Data = url.split(',')[1];
@@ -1228,7 +1441,31 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               8. Use \`analyze_workspace\` to give brand recommendations or overview of the project.
               9. All items (scripts, brainstorms, threads) are files.
               10. Use \`search_content\` robustly. If the user asks where they wrote about X, use the tool. The tool returns matching snippets. Use those to confidently point them to the exact file.
-              11. Always describe what you did or are about to do in your final text response.
+              11. YOUTUBE CAPABILITY: When the user asks to "open YouTube", "show my videos", or mentions "connected channel", use \`get_youtube_data\`. 
+              When you receive the YouTube data (videos), you MUST output the video list using the format: %YOUTUBE_DATA%[JSON_ARRAY_OF_VIDEOS]%END_YOUTUBE% as part of your text response.
+              
+              CRITICAL: IDENTIFYING VIDEO OWNERSHIP:
+              The YouTube data includes a 'category' field. You MUST use this to determine ownership:
+              - 'personal': These are the user's OWN videos. Refer to them as "your videos".
+              - 'competitor': These are videos from a competitor. DO NOT say "your videos". Refer to them as "competitor videos" or "videos from [ChannelName]".
+              - 'inspiration': These are videos the user finds inspiring from ANOTHER channel. DO NOT say "your videos". Refer to them as "inspiration videos" or "videos from [ChannelName]".
+              
+              Tailor your advice accordingly: competitor = analysis/divergence, personal = growth/consistency, inspiration = theme extraction.
+
+              CRITICAL: NATIVE VIDEO ANALYSIS:
+              If the user sends a YouTube video URL, or clicks "watch_video", the system has natively attached the video stream. You MUST automatically be able to "watch" the video and listen to its audio. 
+              When analyzing videos, ALWAYS provide key milestones or visual/verbal identifiers with timestamps formatted EXACTLY as %TIMESTAMP%MM:SS%END_TIMESTAMP% (DO NOT use brackets around the time). This powers the user's interactive player.
+              
+              TRANSCRIPTION:
+              If the user asks for a transcription, wrap the full text in %TRANSCRIPTION%...%END_TRANSCRIPTION% tags to render it in a specialized readability-focused block.
+              
+              CRITICAL: COMPREHENSIVENESS & ANTI-LAZINESS:
+              - You are FORBIDDEN from being "lazy" or provide "short summaries" when a user requests a full transcription, script, or in-depth analysis.
+              - When creating files (\`create_file\`), you MUST provide the COMPLETE and EXHAUSTIVE content. NEVER truncate or say "[...rest of text]".
+              - If a video is long, you MUST provide the full, comprehensive transcription or analysis. The user values completeness over speed for file-linked data.
+              - While chat responses can be helpful and direct, any data being moved into a "File" (Script, Brainstorm, Transcription) must be high-quality, professional, and exhaustive.
+              
+              12. Always describe what you did or are about to do in your final text response.
               
               Alternatively, you can also output raw commands perfectly formatted in your response text to execute them, e.g.:
               command: create_file --name="filename.txt" --folder="folderNameOrId" --content="your content\\nhere"
@@ -1252,7 +1489,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               ADDITIONAL INSTRUCTIONS:
               1. If a URL is provided in the message, the system has proactively already fetched metadata (Title, Description) for you. Use this info to carry on the conversation.
               2. CRITICAL: If the user sends a link with no explicit file operation instructions, you MUST simply reply with a conversational message. DO NOT create files, DO NOT move files, and DO NOT use any tools for URLs unless explicitly commanded.
-              3. Be concise and use proper markdown formatting.
+              3. Be concise in your chat responses, but ALWAYS EXHAUSTIVE AND THOROUGH in file content creation or when explicitly asked for full analysis. Use proper markdown formatting for chat.
               4. After successfully performing tool actions, summarize the results naturally.`
             }
           });
@@ -1329,6 +1566,9 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                     summary: `Workspace has ${files.length} items. Total files: ${files.filter(f => f.type !== 'folder').length}, total folders: ${files.filter(f => f.type === 'folder').length}.`,
                     items: files.map(f => ({ name: f.name, type: f.type, folder: f.parentId || 'root' }))
                   };
+                } else if (call.name === "get_youtube_data") {
+                  const data = await fetchYouTubeData();
+                  callResponse = { success: true, ...data };
                 } else if (call.name === "braindump") {
                   const { rawText, suggestedFolderName } = call.args as any;
                   const folderId = await onCreateFolder(suggestedFolderName || "Organized Ideas", currentFolderId);
@@ -1395,13 +1635,16 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               ADDITIONAL INSTRUCTIONS:
               1. If a URL is provided in the message, the system has proactively already fetched metadata (Title, Description) for you. Use this info to carry on the conversation.
               2. CRITICAL: If the user sends a link with no explicit file operation instructions, you MUST simply reply with a conversational message. DO NOT create files, DO NOT move files, and DO NOT use any tools for URLs unless explicitly commanded.
-              3. Be concise and use proper markdown formatting.
+              3. Be concise in your chat responses, but ALWAYS EXHAUSTIVE AND THOROUGH in file content creation or when explicitly asked for full analysis. Use proper markdown formatting for chat.
               4. After successfully performing tool actions, summarize the results naturally.`
                }
             });
 
             finalResponse = nextStep;
             functionCalls = finalResponse.functionCalls;
+            if (detectedVideoId) {
+              setIsWatchingVideo(false);
+            }
           }
 
           setToolExecutionStatus(null);
@@ -1425,11 +1668,14 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
 
       await saveMessage(sessionId, assistantMessage);
       
-      // If still "New Chat", try to generate a better title based on the assistant's response too
-      if (session && session.title === "New Chat") {
+      // Try to update title if it's still generic
+      const finalSessionSnap = await dbGet(child(dbRef(rtdb), `chatSessions/${sessionId}`));
+      const finalSession = finalSessionSnap.val();
+      if (finalSession && (finalSession.title === "New Chat" || !finalSession.title)) {
         generateTitle(sessionId, `${userMsgContent} ${responseText}`);
       }
     } catch (err) {
+      if (typeof setIsWatchingVideo === 'function') setIsWatchingVideo(false);
       console.error("Chat error:", err);
       await saveMessage(sessionId, {
         role: "system",
@@ -1458,8 +1704,9 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
         updatedAt: Date.now(),
         messages: []
       };
-      const docRef = await addDoc(collection(db, "chatSessions"), newSession);
-      sessionId = docRef.id;
+      const newRef = push(dbRef(rtdb, "chatSessions"));
+      await set(newRef, newSession);
+      sessionId = newRef.key!;
       setCurrentSessionId(sessionId);
     }
 
@@ -1525,7 +1772,11 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             - Use standard HTML tags for formatting (<h1>, <p>, <strong>, <em>, <ul>, etc.) instead of Markdown.
 
             You can use tools to create files, folders, read files, update, delete, rename, move, duplicate, search, analyze, navigate out, and open items.
-            IMPORTANT:
+            IMPORTANT: 
+            IDENTIFYING VIDEO OWNERSHIP: The YouTube data includes a 'category' (personal, competitor, inspiration). 
+            - 'personal': These are the user's OWN videos.
+            - 'competitor' / 'inspiration': These belong to OTHERS. DO NOT refer to them as "your videos". Use "competitor's videos" or "inspiration videos".
+            Tailor advice: competitor = analysis, personal = refinement, inspiration = extracting themes.
             1. DO NOT ask for permission for basic tasks. Be intelligent and self-directed. Just execute what the user is asking.
             2. If you need to know what a file contains, use \`read_file\`.
             3. To open a file/folder in the UI, use \`open_item\`.
@@ -1644,6 +1895,14 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                 }
               },
               {
+                name: "get_youtube_data",
+                description: "Fetch latest linked YouTube data and videos.",
+                parameters: {
+                  type: "object",
+                  properties: { limit: { type: "number" } }
+                }
+              },
+              {
                 name: "open_item",
                 description: "Open a file or folder in UI.",
                 parameters: {
@@ -1689,6 +1948,9 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                           const { name, folderId, content, type } = call.args;
                           const newId = await onCreateFile(name, folderId || currentFolderId, content, type as FileType);
                           callResponse = { success: true, id: newId };
+                      } else if (call.name === "get_youtube_data") {
+                          const data = await fetchYouTubeData();
+                          callResponse = { success: true, ...data };
                       } else if (call.name === "create_folder") {
                           const { name, parentId } = call.args;
                           const newId = await onCreateFolder(name, parentId || currentFolderId);
@@ -1956,6 +2218,39 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
     setIsConnecting(false);
   };
 
+  const handleMessageAction = (action: string, data: any) => {
+    if (action === 'watch_video') {
+      const url = data.link || "";
+      const title = data.title || "video";
+      setInput(`Tell me more about this video: ${title} (${url})`);
+      handleSend(`I'm clicking on this video: ${title}. Please provide more details and options like summarize or transcribe. URL: ${url}`);
+    } else if (action === 'play_timestamp') {
+      // data is "MM:SS"
+      const parts = data.split(':').map(Number).reverse();
+      let seconds = 0;
+      if (parts[0]) seconds += parts[0];
+      if (parts[1]) seconds += parts[1] * 60;
+      if (parts[2]) seconds += parts[2] * 3600;
+
+      const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+      let lastVideoId = null;
+      const allMessagesReversed = [...messages].reverse();
+      for (let i = 0; i < allMessagesReversed.length; i++) {
+         const match = allMessagesReversed[i].content.match(ytRegex);
+         if (match && match[1]) {
+           lastVideoId = match[1];
+           break;
+         }
+      }
+      
+      if (lastVideoId) {
+        setActiveVideoPlayer({ videoId: lastVideoId, timeSeconds: seconds });
+      } else {
+        console.error("Could not find a video ID to play the timestamp for.");
+      }
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-white relative overflow-hidden">
       {/* Header */}
@@ -2126,6 +2421,28 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto p-4 space-y-8 flex flex-col scroll-smooth custom-scrollbar relative"
       >
+        {activeVideoPlayer && (
+          <div className="sticky top-0 z-10 w-full mb-4 shrink-0 bg-white shadow-xl rounded-2xl overflow-hidden border border-neutral-100/50 backdrop-blur-xl">
+             <div className="flex items-center justify-between px-4 py-2 bg-neutral-50/80 border-b border-neutral-100/50">
+               <div className="flex items-center gap-2">
+                 <Youtube className="w-4 h-4 text-red-500" />
+                 <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-600">Video Reference</span>
+               </div>
+               <button onClick={() => setActiveVideoPlayer(null)} className="p-1 hover:bg-neutral-200 rounded-full transition-colors active:scale-95 text-neutral-400 hover:text-neutral-900">
+                 <X className="w-4 h-4" />
+               </button>
+             </div>
+             <div className="aspect-video w-full bg-black">
+               <iframe 
+                 src={`https://www.youtube.com/embed/${activeVideoPlayer.videoId}?start=${activeVideoPlayer.timeSeconds}&autoplay=1`} 
+                 allow="autoplay; encrypted-media" 
+                 allowFullScreen 
+                 className="w-full h-full border-0"
+               />
+             </div>
+          </div>
+        )}
+
         {messages.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 space-y-6 text-center max-w-sm mx-auto">
             <div className="w-20 h-20 bg-neutral-50 border border-neutral-100 rounded-3xl flex items-center justify-center animate-pulse">
@@ -2165,6 +2482,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               setViewingImage={setViewingImage}
               onSpeak={handleSpeak}
               onRetry={() => handleSend(msg.content)}
+              onAction={handleMessageAction}
             />
           ))
         )}
@@ -2182,8 +2500,9 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                 }} 
                 viewingImage={null} 
                 setViewingImage={() => {}} 
-                onSpeak={() => {}} 
-                onRetry={() => {}} 
+                onSpeak={handleSpeak}
+                onRetry={() => handleSend(liveUserTranscript)}
+                onAction={handleMessageAction}
               />
             )}
             {lastLiveResponse && (
@@ -2196,10 +2515,28 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                 }} 
                 viewingImage={null} 
                 setViewingImage={() => {}} 
-                onSpeak={() => {}} 
+                onSpeak={handleSpeak} 
                 onRetry={() => {}} 
+                onAction={handleMessageAction}
               />
             )}
+          </div>
+        )}
+
+        {isWatchingVideo && (
+          <div className="self-start px-0.5 space-y-2 mb-4">
+             <div className="flex items-center gap-2 opacity-70">
+              <Youtube className="w-3 h-3 text-red-500" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-red-500 animate-pulse">Watching Video...</span>
+            </div>
+            <div className="h-1 w-32 bg-neutral-100 rounded-full overflow-hidden">
+               <motion.div 
+                 initial={{ x: "-100%" }}
+                 animate={{ x: "100%" }}
+                 transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                 className="h-full w-1/2 bg-red-500 rounded-full"
+               />
+            </div>
           </div>
         )}
 

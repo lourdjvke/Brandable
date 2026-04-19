@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { UserProfile, FileItem, FileType } from "@/src/types";
-import { db } from "@/src/lib/firebase";
+import { db, rtdb } from "@/src/lib/firebase";
 import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { ref as dbRef, onValue, set, push, update, remove } from "firebase/database";
 import { Folder, FileText, Plus, ChevronRight, Search, Bell, Edit3, MessageSquare, Twitter, BrainCircuit, Check, Image as ImageIcon, Trash2 } from "lucide-react";
 import { motion, AnimatePresence, useDragControls } from "motion/react";
 import { cn } from "@/src/lib/utils";
@@ -43,15 +44,43 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
     return "Good Evening 🌙";
   };
 
+  const cleanObject = (obj: any): any => {
+    if (Array.isArray(obj)) {
+      return obj.map(cleanObject);
+    } else if (obj !== null && typeof obj === "object") {
+      return Object.entries(obj).reduce((acc: any, [key, value]) => {
+        if (value !== undefined) {
+          acc[key] = cleanObject(value);
+        }
+        return acc;
+      }, {});
+    }
+    return obj;
+  };
+
   useEffect(() => {
     if (!profile.uid) return;
-    const q = query(collection(db, "files"), where("ownerId", "==", profile.uid));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fileList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FileItem));
-      setFiles(fileList);
+    const filesRef = dbRef(rtdb, "files");
+    const snapshotUnsub = onValue(filesRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const fileList = Object.entries(data)
+          .map(([id, f]: [string, any]) => ({ id, ...f } as FileItem))
+          .filter(f => f.ownerId === profile.uid);
+        
+        // Sorting by updatedAt (latest first)
+        fileList.sort((a, b) => b.updatedAt - a.updatedAt);
+        setFiles(fileList);
+      } else {
+        setFiles([]);
+      }
+      setLoading(false);
+    }, (error) => {
+      console.error("RTDB error in Workspace:", error);
       setLoading(false);
     });
-    return () => unsubscribe();
+    
+    return () => snapshotUnsub();
   }, [profile.uid]);
 
   const createItem = async (type: FileType, name: string = "Untitled") => {
@@ -67,17 +96,22 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
         updatedAt: Date.now(),
         content: ""
       };
-      await addDoc(collection(db, "files"), newFile);
+      const newRef = push(dbRef(rtdb, "files"));
+      await set(newRef, newFile);
       setShowCreateMenu(false);
     } catch (err) {
-      console.error("Error creating item:", err);
+      console.error("Error creating item in RTDB:", err);
     } finally {
       setLoading(false);
     }
   };
 
   const deleteItem = async (id: string) => {
-    await deleteDoc(doc(db, "files", id));
+    try {
+      await remove(dbRef(rtdb, `files/${id}`));
+    } catch (err) {
+      console.error("Error deleting item from RTDB:", err);
+    }
   };
 
   const duplicateItem = async (file: FileItem) => {
@@ -89,18 +123,27 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
         createdAt: Date.now(),
         updatedAt: Date.now()
       };
-      await addDoc(collection(db, "files"), newFile);
+      const newRef = push(dbRef(rtdb, "files"));
+      await set(newRef, cleanObject(newFile));
     } catch (err) {
-      console.error("Error duplicating item:", err);
+      console.error("Error duplicating item in RTDB:", err);
     }
   };
 
   const renameItem = async (id: string, newName: string) => {
-    await updateDoc(doc(db, "files", id), { name: newName, updatedAt: Date.now() });
+    try {
+      await update(dbRef(rtdb, `files/${id}`), { name: newName, updatedAt: Date.now() });
+    } catch (err) {
+      console.error("Error renaming item in RTDB:", err);
+    }
   };
 
   const updateFolderColor = async (id: string, color: string) => {
-    await updateDoc(doc(db, "files", id), { color, updatedAt: Date.now() });
+    try {
+      await update(dbRef(rtdb, `files/${id}`), { color, updatedAt: Date.now() });
+    } catch (err) {
+      console.error("Error updating folder color in RTDB:", err);
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -108,8 +151,12 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
     if (!file || !uploadingFolderId) return;
     const reader = new FileReader();
     reader.onloadend = async () => {
-      await updateDoc(doc(db, "files", uploadingFolderId), { headerImage: reader.result as string, updatedAt: Date.now() });
-      setUploadingFolderId(null);
+      try {
+        await update(dbRef(rtdb, `files/${uploadingFolderId}`), { headerImage: reader.result as string, updatedAt: Date.now() });
+        setUploadingFolderId(null);
+      } catch (err) {
+        console.error("Error uploading image to RTDB:", err);
+      }
     };
     reader.readAsDataURL(file);
   };

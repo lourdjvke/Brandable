@@ -11,8 +11,9 @@ import { NotificationProvider } from "./NotificationSystem";
 import { motion, AnimatePresence } from "motion/react";
 import { MessageSquare, Menu, X, Mic, ChevronUp } from "lucide-react";
 import { cn } from "@/src/lib/utils";
-import { db } from "@/src/lib/firebase";
+import { db, rtdb } from "@/src/lib/firebase";
 import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, arrayUnion, deleteDoc, getDocs, orderBy, limit } from "firebase/firestore";
+import { ref as dbRef, onValue, set, push, update, remove, get as dbGet, child } from "firebase/database";
 
 export default function Dashboard({ profile }: { profile: UserProfile }) {
   return (
@@ -97,14 +98,35 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   const [showBottomBar, setShowBottomBar] = useState(true);
   const lastScrollY = useRef(0);
 
+  const cleanObject = (obj: any): any => {
+    if (Array.isArray(obj)) {
+      return obj.map(cleanObject);
+    } else if (obj !== null && typeof obj === "object") {
+      return Object.entries(obj).reduce((acc: any, [key, value]) => {
+        if (value !== undefined) {
+          acc[key] = cleanObject(value);
+        }
+        return acc;
+      }, {});
+    }
+    return obj;
+  };
+
   useEffect(() => {
     if (!profile.uid) return;
-    const q = query(collection(db, "files"), where("ownerId", "==", profile.uid));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fileList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FileItem));
-      setFiles(fileList);
+    const filesRef = dbRef(rtdb, "files");
+    const unsub = onValue(filesRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const fileList = Object.entries(data)
+          .map(([id, f]: [string, any]) => ({ id, ...f } as FileItem))
+          .filter(f => f.ownerId === profile.uid);
+        setFiles(fileList);
+      } else {
+        setFiles([]);
+      }
     });
-    return () => unsubscribe();
+    return () => unsub();
   }, [profile.uid]);
 
   const handleMainScroll = (e: React.UIEvent<HTMLElement>) => {
@@ -129,7 +151,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
     try {
       const newFolder = {
         name,
-        type: "folder",
+        type: "folder" as const,
         parentId: currentFolderId,
         ownerId: profile.uid,
         createdAt: Date.now(),
@@ -137,8 +159,9 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
         tags: [],
         color: "#3b82f6"
       };
-      const docRef = await addDoc(collection(db, "files"), newFolder);
-      return docRef.id;
+      const newRef = push(dbRef(rtdb, "files"));
+      await set(newRef, newFolder);
+      return newRef.key!;
     } catch (err) {
       console.error("Error creating folder:", err);
     }
@@ -148,32 +171,21 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
     let sessionId = currentSessionIdRef.current;
     
     if (!sessionId) {
-      const q = query(
-        collection(db, "chatSessions"), 
-        where("ownerId", "==", profile.uid), 
-        orderBy("updatedAt", "desc"), 
-        limit(1)
-      );
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        sessionId = snap.docs[0].id;
-        currentSessionIdRef.current = sessionId;
-        setCurrentSessionId(sessionId);
-      } else {
-        const newDoc = await addDoc(collection(db, "chatSessions"), {
-          ownerId: profile.uid,
-          title: "Voice Brainstorming",
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          messages: []
-        });
-        sessionId = newDoc.id;
-        currentSessionIdRef.current = sessionId;
-        setCurrentSessionId(sessionId);
-      }
+      // Create a default session if none exists
+      const newSession = {
+        ownerId: profile.uid,
+        title: "Assistant Logs",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        messages: []
+      };
+      const newRef = push(dbRef(rtdb, "chatSessions"));
+      await set(newRef, newSession);
+      sessionId = newRef.key!;
+      currentSessionIdRef.current = sessionId;
+      setCurrentSessionId(sessionId);
     }
 
-    const sessionRef = doc(db, "chatSessions", sessionId);
     const newMessage = {
       role,
       content: messageContent,
@@ -182,14 +194,21 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
       isSilent
     };
 
-    const cleanMessage = Object.fromEntries(
-      Object.entries(newMessage).filter(([_, v]) => v !== undefined)
-    );
+    try {
+      const sessionSnap = await dbGet(child(dbRef(rtdb), `chatSessions/${sessionId}`));
+      const sessionData = sessionSnap.val();
+      const existingMessages = sessionData?.messages 
+        ? (Array.isArray(sessionData.messages) ? sessionData.messages : Object.values(sessionData.messages)) 
+        : [];
+      const updatedMessages = cleanObject([...existingMessages, newMessage]);
 
-    await updateDoc(sessionRef, {
-      messages: arrayUnion(cleanMessage),
-      updatedAt: Date.now()
-    });
+      await update(dbRef(rtdb, `chatSessions/${sessionId}`), {
+        messages: updatedMessages,
+        updatedAt: Date.now()
+      });
+    } catch (err) {
+      console.error("Error logging action to chat sessions:", err);
+    }
   };
 
   const handleCreateFile = async (name: string, folderId: string | null, content: string = "", type: FileType = "script") => {
@@ -204,8 +223,9 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
         tags: [],
         content
       };
-      const docRef = await addDoc(collection(db, "files"), newFile);
-      return docRef.id;
+      const newRef = push(dbRef(rtdb, "files"));
+      await set(newRef, newFile);
+      return newRef.key!;
     } catch (err) {
       console.error("Error creating file:", err);
     }
@@ -213,7 +233,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
 
   const handleUpdateFile = async (id: string, updates: Partial<FileItem>) => {
     try {
-      await updateDoc(doc(db, "files", id), { ...updates, updatedAt: Date.now() });
+      await update(dbRef(rtdb, `files/${id}`), { ...cleanObject(updates), updatedAt: Date.now() });
     } catch (err) {
       console.error("Error updating file:", err);
     }
@@ -221,7 +241,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
 
   const handleDeleteFile = async (id: string) => {
     try {
-      await deleteDoc(doc(db, "files", id));
+      await remove(dbRef(rtdb, `files/${id}`));
     } catch (err) {
       console.error("Error deleting file:", err);
     }
@@ -415,65 +435,64 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
       {/* Copilot Sidebar (Desktop) & Bottom Sheet (Mobile/Tablet) */}
       <AnimatePresence>
         {isCopilotOpen && (
-          <>
-            {/* Backdrop for Sheets */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsCopilotOpen(false)}
-              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[80] lg:hidden"
-            />
-            {/* Copilot Container */}
-            <motion.div 
-              initial={isDesktop ? { x: "100%" } : { y: "100%" }}
-              animate={isDesktop ? { x: 0 } : { y: 0 }}
-              exit={isDesktop ? { x: "100%" } : { y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className={cn(
-                "fixed bottom-0 left-0 right-0 h-[92vh] rounded-t-[32px] md:rounded-t-[40px] z-[90] lg:relative lg:h-full lg:w-[400px] lg:rounded-none lg:z-auto bg-white border-t lg:border-t-0 lg:border-l border-neutral-100 flex flex-col overflow-hidden",
-                !isCopilotOpen && "hidden"
-              )}
-            >
-              {/* Drag Handle for Sheet */}
-              <div className="lg:hidden flex justify-center py-4 shrink-0">
-                <div className="w-12 h-1.5 bg-neutral-200 rounded-full" />
-              </div>
-              
-              <div className="lg:hidden absolute top-4 right-4 z-[100]">
-                <button onClick={() => setIsCopilotOpen(false)} className="p-2 bg-neutral-100 rounded-full hover:bg-neutral-200 transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <AICopilot 
-                ref={aiCopilotRef}
-                profile={profile} 
-                currentPath={currentPath}
-                currentFolderId={currentFolderId}
-                files={files}
-                sessionId={currentSessionId}
-                apiKey={geminiKey}
-                onNavigate={(id) => {
-                  handleTabChange("workspace");
-                  setCurrentFolderId(id);
-                  if (window.innerWidth < 1280) setIsCopilotOpen(false);
-                }}
-                onOpenFile={(file) => {
-                   setSelectedFile(file);
-                   if (window.innerWidth < 1280) setIsCopilotOpen(false);
-                }}
-                onOpenSettings={() => handleTabChange("settings")}
-                onCreateFile={handleCreateFile}
-                onUpdateFile={handleUpdateFile}
-                onDeleteFile={handleDeleteFile}
-                onCreateFolder={handleCreateFolder}
-                onSessionChange={setCurrentSessionId}
-              />
-            </motion.div>
-          </>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsCopilotOpen(false)}
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[80] lg:hidden"
+          />
         )}
       </AnimatePresence>
+
+      <motion.div 
+        initial={isDesktop ? { x: "100%" } : { y: "100%" }}
+        animate={isCopilotOpen ? { x: 0, y: 0 } : (isDesktop ? { x: "100%" } : { y: "100%" })}
+        transition={{ type: "spring", damping: 25, stiffness: 200 }}
+        className={cn(
+          "fixed bottom-0 left-0 right-0 h-[92vh] rounded-t-[32px] md:rounded-t-[40px] z-[90] lg:relative lg:h-full lg:w-[400px] lg:rounded-none lg:z-auto bg-white border-t lg:border-t-0 lg:border-l border-neutral-100 flex flex-col overflow-hidden",
+          !isCopilotOpen && !isDesktop && "pointer-events-none"
+        )}
+        style={{
+          display: !isCopilotOpen && isDesktop ? "none" : "flex"
+        }}
+      >
+        {/* Drag Handle for Sheet */}
+        <div className="lg:hidden flex justify-center py-4 shrink-0">
+          <div className="w-12 h-1.5 bg-neutral-200 rounded-full" />
+        </div>
+        
+        <div className="lg:hidden absolute top-4 right-4 z-[100]">
+          <button onClick={() => setIsCopilotOpen(false)} className="p-2 bg-neutral-100 rounded-full hover:bg-neutral-200 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <AICopilot 
+          ref={aiCopilotRef}
+          profile={profile} 
+          currentPath={currentPath}
+          currentFolderId={currentFolderId}
+          files={files}
+          sessionId={currentSessionId}
+          apiKey={geminiKey}
+          onNavigate={(id) => {
+            handleTabChange("workspace");
+            setCurrentFolderId(id);
+            if (window.innerWidth < 1280) setIsCopilotOpen(false);
+          }}
+          onOpenFile={(file) => {
+             setSelectedFile(file);
+             if (window.innerWidth < 1280) setIsCopilotOpen(false);
+          }}
+          onOpenSettings={() => handleTabChange("settings")}
+          onCreateFile={handleCreateFile}
+          onUpdateFile={handleUpdateFile}
+          onDeleteFile={handleDeleteFile}
+          onCreateFolder={handleCreateFolder}
+          onSessionChange={setCurrentSessionId}
+        />
+      </motion.div>
 
       <VoiceAssistant 
         ref={voiceAssistantRef}
