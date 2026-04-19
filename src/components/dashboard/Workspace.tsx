@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { UserProfile, FileItem, FileType } from "@/src/types";
-import { db, rtdb } from "@/src/lib/firebase";
-import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { rtdb } from "@/src/lib/firebase";
 import { ref as dbRef, onValue, set, push, update, remove } from "firebase/database";
 import { Folder, FileText, Plus, ChevronRight, Search, Bell, Edit3, MessageSquare, Twitter, BrainCircuit, Check, Image as ImageIcon, Trash2 } from "lucide-react";
 import { motion, AnimatePresence, useDragControls } from "motion/react";

@@ -11,8 +11,7 @@ import { NotificationProvider } from "./NotificationSystem";
 import { motion, AnimatePresence } from "motion/react";
 import { MessageSquare, Menu, X, Mic, ChevronUp } from "lucide-react";
 import { cn } from "@/src/lib/utils";
-import { db, rtdb } from "@/src/lib/firebase";
-import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, arrayUnion, deleteDoc, getDocs, orderBy, limit } from "firebase/firestore";
+import { rtdb } from "@/src/lib/firebase";
 import { ref as dbRef, onValue, set, push, update, remove, get as dbGet, child } from "firebase/database";
 
 export default function Dashboard({ profile }: { profile: UserProfile }) {

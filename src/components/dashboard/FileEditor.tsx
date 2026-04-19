@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { FileItem, UserProfile, Tag, TAG_COLORS } from "@/src/types";
-import { db, rtdb } from "@/src/lib/firebase";
-import { doc, onSnapshot } from "firebase/firestore";
-import { ref as dbRef, update, remove } from "firebase/database";
+import { rtdb } from "@/src/lib/firebase";
+import { ref as dbRef, update, onValue } from "firebase/database";
 import { 
   ArrowLeft, Save, Loader2, Edit3, MessageSquare, Twitter, 
   BrainCircuit, FileText, X, Plus, Image as ImageIcon,
@@ -297,9 +296,10 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
   }, [editor]);
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "files", file.id), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data() as FileItem;
+    const fileRef = dbRef(rtdb, `files/${file.id}`);
+    const unsub = onValue(fileRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
         if (data.name !== name) setName(data.name);
         if (JSON.stringify(data.tags) !== JSON.stringify(tags)) setTags(data.tags || []);
         if (data.headerImage !== headerImage) setHeaderImage(data.headerImage || "");

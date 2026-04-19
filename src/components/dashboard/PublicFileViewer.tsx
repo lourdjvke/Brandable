@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/src/lib/firebase";
+import { ref as dbRef, onValue } from "firebase/database";
+import { rtdb } from "@/src/lib/firebase";
 import { FileItem } from "@/src/types";
 import Loader from "@/src/components/ui/Loader";
 import { marked } from "marked";
@@ -72,16 +72,16 @@ export default function PublicFileViewer({ userId, fileId }: { userId: string; f
   const [error, setError] = useState("");
 
   useEffect(() => {
-    async function fetchFile() {
+    const fileRef = dbRef(rtdb, `files/${fileId}`);
+    const unsub = onValue(fileRef, (snapshot) => {
       try {
-        const docRef = doc(db, "files", fileId);
-        const docSnap = await getDoc(docRef);
+        const data = snapshot.val();
         
-        if (docSnap.exists()) {
-          const data = docSnap.data() as FileItem;
+        if (data) {
           // Simple validation: Ensure the file belongs to this user and is set to public.
           if (data.ownerId === userId && data.isPublic) {
-            setFile(data);
+            setFile({ id: fileId, ...data });
+            setError("");
           } else {
             setError("This page is private or could not be found.");
           }
@@ -94,9 +94,13 @@ export default function PublicFileViewer({ userId, fileId }: { userId: string; f
       } finally {
         setLoading(false);
       }
-    }
+    }, (err) => {
+      console.error("Realtime DB error:", err);
+      setError("Connection error.");
+      setLoading(false);
+    });
     
-    fetchFile();
+    return () => unsub();
   }, [fileId, userId]);
 
   if (loading) return <div className="h-screen w-screen flex items-center justify-center bg-white"><Loader /></div>;
@@ -111,7 +115,7 @@ export default function PublicFileViewer({ userId, fileId }: { userId: string; f
   }
 
   return (
-    <div className="min-h-screen w-screen bg-white text-black overflow-y-auto hide-scrollbar selection:bg-neutral-100">
+    <div className="min-h-screen w-screen bg-white text-black overflow-y-auto selection:bg-neutral-100">
       <div className="max-w-3xl mx-auto px-6 py-12 md:py-20 lg:py-32">
         
         {/* Tags (Mirroring Editor) */}
