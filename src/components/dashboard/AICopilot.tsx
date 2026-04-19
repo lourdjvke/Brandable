@@ -3,7 +3,7 @@ import { UserProfile, ChatSession, ChatMessage, FileItem, FileType } from "@/src
 import { db, rtdb } from "@/src/lib/firebase";
 import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, getDocs, where } from "firebase/firestore";
 import { ref as dbRef, onValue, set, push, update, remove, query as rtdbQuery, orderByChild, equalTo, get as dbGet, child } from "firebase/database";
-import { Copy, Send, Mic, Square, Settings, Plus, Image as ImageIcon, X, Loader2, ChevronRight, BrainCircuit, ChevronDown, User, Bot, MessageSquare, History, Volume2, RotateCcw, ExternalLink, ArrowDown, Check, Youtube } from "lucide-react";
+import { Copy, Send, Mic, Square, Settings, Plus, Image as ImageIcon, X, Loader2, ChevronRight, BrainCircuit, ChevronDown, User, Bot, MessageSquare, History, Volume2, RotateCcw, ExternalLink, ArrowDown, Check, Youtube, Minimize2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
 import { GoogleGenAI, LiveServerMessage, Modality, Type, ThinkingLevel } from "@google/genai";
@@ -567,7 +567,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
 
   const [attachedImages, setAttachedImages] = useState<{ url: string; file: File }[]>([]);
   const [isWatchingVideo, setIsWatchingVideo] = useState(false);
-  const [activeVideoPlayer, setActiveVideoPlayer] = useState<{ videoId: string, timeSeconds: number } | null>(null);
+  const [activeVideoPlayer, setActiveVideoPlayer] = useState<{ videoId: string, timeSeconds: number, isMinimized?: boolean } | null>(null);
   const [linkPreview, setLinkPreview] = useState<any>(null);
   const [viewingImage, setViewingImage] = useState<string | null>(null);
 
@@ -1442,7 +1442,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               9. All items (scripts, brainstorms, threads) are files.
               10. Use \`search_content\` robustly. If the user asks where they wrote about X, use the tool. The tool returns matching snippets. Use those to confidently point them to the exact file.
               11. YOUTUBE CAPABILITY: When the user asks to "open YouTube", "show my videos", or mentions "connected channel", use \`get_youtube_data\`. 
-              When you receive the YouTube data (videos), you MUST output the video list using the format: %YOUTUBE_DATA%[JSON_ARRAY_OF_VIDEOS]%END_YOUTUBE% as part of your text response.
+              When you receive the YouTube data (videos), you MUST output the video list using the format: %YOUTUBE_DATA%[JSON_ARRAY_OF_VIDEOS]%END_YOUTUBE% as part of your text response. ALWAYS return this tag first before any other text analysis if videos are discovered.
               
               CRITICAL: IDENTIFYING VIDEO OWNERSHIP:
               The YouTube data includes a 'category' field. You MUST use this to determine ownership:
@@ -1642,14 +1642,15 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
 
             finalResponse = nextStep;
             functionCalls = finalResponse.functionCalls;
-            if (detectedVideoId) {
-              setIsWatchingVideo(false);
-            }
           }
 
+          if (detectedVideoId) {
+            setIsWatchingVideo(false);
+          }
           setToolExecutionStatus(null);
           break; // Success!
         } catch (err) {
+          if (typeof setIsWatchingVideo === 'function') setIsWatchingVideo(false);
           console.error(`Attempt ${attempts + 1} failed with model ${usedModelName}:`, err);
           lastError = err;
           attempts++;
@@ -2254,14 +2255,20 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   return (
     <div className="flex flex-col h-full bg-white relative overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 h-14 border-b border-neutral-100 bg-white sticky top-0 z-10 shrink-0">
+      <div className={cn(
+        "flex items-center justify-between px-4 h-14 border-b border-neutral-100 bg-white sticky top-0 z-10 shrink-0 transition-all",
+        activeVideoPlayer && "md:h-14 h-10" // Compressing header on mobile when player active
+      )}>
         <div className="flex items-center gap-2.5">
-          <div className="p-2 bg-neutral-50 border border-neutral-100 rounded-lg">
-            <BrainCircuit className="w-5 h-5 text-black" />
+          <div className={cn(
+            "p-2 bg-neutral-50 border border-neutral-100 rounded-lg transition-all",
+            activeVideoPlayer && "md:p-2 p-1.5"
+          )}>
+            <BrainCircuit className={cn("w-5 h-5 text-black transition-all", activeVideoPlayer && "md:w-5 md:h-5 w-4 h-4")} />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-neutral-900 tracking-tight">AI Copilot</h2>
-            <div className="relative group/model">
+            <h2 className={cn("text-sm font-bold text-neutral-900 tracking-tight transition-all", activeVideoPlayer && "md:text-sm text-xs leading-none")}>AI Copilot</h2>
+            <div className={cn("relative group/model transition-all", activeVideoPlayer && "md:block hidden")}>
               <button 
                 className="flex items-center gap-1 text-[10px] font-medium text-neutral-400 uppercase tracking-widest hover:text-black transition-colors"
                 onClick={() => !isLive && setShowModelSelector(!showModelSelector)}
@@ -2419,42 +2426,85 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       <div 
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-4 space-y-8 flex flex-col scroll-smooth custom-scrollbar relative"
+        className={cn(
+          "flex-1 overflow-y-auto p-4 space-y-8 flex flex-col scroll-smooth custom-scrollbar relative transition-all",
+          activeVideoPlayer && "md:p-4 p-2 md:space-y-8 space-y-4" // Tighter spacing on mobile when player active
+        )}
       >
         {activeVideoPlayer && (
-          <div className="sticky top-0 z-10 w-full mb-4 shrink-0 bg-white shadow-xl rounded-2xl overflow-hidden border border-neutral-100/50 backdrop-blur-xl">
-             <div className="flex items-center justify-between px-4 py-2 bg-neutral-50/80 border-b border-neutral-100/50">
-               <div className="flex items-center gap-2">
-                 <Youtube className="w-4 h-4 text-red-500" />
-                 <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-600">Video Reference</span>
+          <div className="sticky top-0 z-30 w-full mb-4 shrink-0 bg-white/95 shadow-2xl rounded-2xl overflow-hidden border border-neutral-100/50 backdrop-blur-2xl ring-1 ring-black/5">
+             <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-50/80 border-b border-neutral-100/50">
+               <div className="flex items-center gap-2.5">
+                 <div className="p-1 bg-red-600/10 rounded-lg">
+                   <Youtube className="w-4 h-4 text-red-600" />
+                 </div>
+                 <div className="flex flex-col">
+                   <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-900">Reference Player</span>
+                   <span className="text-[9px] font-medium text-neutral-400">Jumping to {Math.floor(activeVideoPlayer.timeSeconds / 60)}:{(activeVideoPlayer.timeSeconds % 60).toString().padStart(2, '0')}</span>
+                 </div>
                </div>
-               <button onClick={() => setActiveVideoPlayer(null)} className="p-1 hover:bg-neutral-200 rounded-full transition-colors active:scale-95 text-neutral-400 hover:text-neutral-900">
-                 <X className="w-4 h-4" />
-               </button>
+               <div className="flex items-center gap-2">
+                 <button 
+                  onClick={() => setActiveVideoPlayer(prev => prev ? { ...prev, isMinimized: !prev.isMinimized } : null)}
+                  className="p-1.5 hover:bg-neutral-200 rounded-full transition-colors active:scale-95 text-neutral-400 hover:text-neutral-900"
+                 >
+                   <Minimize2 className="w-4 h-4" />
+                 </button>
+                 <button onClick={() => setActiveVideoPlayer(null)} className="p-1.5 hover:bg-red-50 rounded-full transition-colors active:scale-95 text-neutral-400 hover:text-red-600">
+                   <X className="w-4 h-4" />
+                 </button>
+               </div>
              </div>
-             <div className="aspect-video w-full bg-black">
-               <iframe 
-                 src={`https://www.youtube.com/embed/${activeVideoPlayer.videoId}?start=${activeVideoPlayer.timeSeconds}&autoplay=1`} 
-                 allow="autoplay; encrypted-media" 
-                 allowFullScreen 
-                 className="w-full h-full border-0"
-               />
-             </div>
+             {!activeVideoPlayer.isMinimized && (
+               <div className="aspect-video w-full bg-black relative">
+                 <iframe 
+                   key={activeVideoPlayer.videoId + (activeVideoPlayer.timeSeconds || 0)} // Using key to force reload for timestamp seek if API not used
+                   src={`https://www.youtube.com/embed/${activeVideoPlayer.videoId}?start=${activeVideoPlayer.timeSeconds}&autoplay=1&rel=0&modestbranding=1`} 
+                   allow="autoplay; encrypted-media" 
+                   allowFullScreen 
+                   className="w-full h-full border-0"
+                 />
+                 {isWatchingVideo && (
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center pointer-events-none">
+                       <div className="flex flex-col items-center gap-3">
+                          <div className="flex gap-1.5">
+                             {[0, 1, 2].map(i => (
+                               <motion.div 
+                                 key={i}
+                                 animate={{ height: [8, 16, 8] }}
+                                 transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15 }}
+                                 className="w-1 bg-red-500 rounded-full"
+                               />
+                             ))}
+                          </div>
+                          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white animate-pulse">Analyzing Frames</span>
+                       </div>
+                    </div>
+                 )}
+               </div>
+             )}
           </div>
         )}
 
         {messages.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 space-y-6 text-center max-w-sm mx-auto">
-            <div className="w-20 h-20 bg-neutral-50 border border-neutral-100 rounded-3xl flex items-center justify-center animate-pulse">
-              <BrainCircuit className="w-10 h-10 text-neutral-900" />
-            </div>
+          <div className={cn(
+            "flex-1 flex flex-col items-center justify-center p-8 space-y-6 text-center max-w-sm mx-auto transition-all",
+            activeVideoPlayer && "md:p-8 p-4 md:space-y-6 space-y-3"
+          )}>
+            {!activeVideoPlayer && (
+              <div className="w-20 h-20 bg-neutral-50 border border-neutral-100 rounded-3xl flex items-center justify-center animate-pulse">
+                <BrainCircuit className="w-10 h-10 text-neutral-900" />
+              </div>
+            )}
             <div>
-              <h3 className="text-xl font-bold text-neutral-900 mb-2">How can I help you?</h3>
-              <p className="text-sm text-neutral-500 leading-relaxed font-medium">
-                I can help you build brainstorms, scripts, captions, organize folders or just brainstorm ideas for your next big thing.
-              </p>
+              <h3 className={cn("text-xl font-bold text-neutral-900 mb-2 mt-[-50px]", activeVideoPlayer && "mt-0 text-lg")}>How can I help you?</h3>
+              {!activeVideoPlayer && (
+                <p className="text-sm text-neutral-500 leading-relaxed font-medium">
+                  I can help you build brainstorms, scripts, captions, organize folders or just brainstorm ideas for your next big thing.
+                </p>
+              )}
             </div>
-            <div className="grid gap-2 w-full">
+            <div className={cn("grid gap-2 w-full", activeVideoPlayer && "md:grid hidden")}>
               {isSuggestionsLoading ? (
                 <div className="flex items-center justify-center gap-2 py-4">
                   <Loader2 className="w-3 h-3 animate-spin text-neutral-400" />
@@ -2584,9 +2634,12 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-white/80 backdrop-blur-xl border-t border-neutral-100 shrink-0">
+      <div className={cn(
+        "p-4 bg-white/80 backdrop-blur-xl border-t border-neutral-100 shrink-0 transition-all",
+        activeVideoPlayer && "md:p-4 p-2" // Minimal padding on mobile when player is active
+      )}>
         {/* Attached Images Preview */}
-        {attachedImages.length > 0 && (
+        {attachedImages.length > 0 && !activeVideoPlayer && ( // Hide image preview on mobile when player is active to save space
           <div className="flex gap-2 mb-3 overflow-x-auto pb-2">
             {attachedImages.map((img, idx) => (
               <div key={idx} className="relative shrink-0">
@@ -2602,7 +2655,10 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           </div>
         )}
 
-        <div className="flex items-end gap-2 bg-neutral-100 p-1.5 rounded-2xl border border-neutral-100 focus-within:border-neutral-200 focus-within:bg-neutral-50 transition-all relative">
+        <div className={cn(
+          "flex items-end gap-2 bg-neutral-100 p-1.5 rounded-2xl border border-neutral-100 focus-within:border-neutral-200 focus-within:bg-neutral-50 transition-all relative",
+          activeVideoPlayer && "rounded-xl" // Slightly sharper corners for minimal look
+        )}>
           <input 
             type="file" 
             accept="image/*" 
@@ -2611,12 +2667,14 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             ref={fileInputRef}
             onChange={handleImageUpload}
           />
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="p-2.5 text-neutral-400 hover:text-black transition-all rounded-xl hover:bg-white shrink-0 active:scale-95"
-          >
-            <ImageIcon className="w-5 h-5" />
-          </button>
+          {!activeVideoPlayer && ( // Hide attachment button on mobile when player is active
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="p-2.5 text-neutral-400 hover:text-black transition-all rounded-xl hover:bg-white shrink-0 active:scale-95"
+            >
+              <ImageIcon className="w-5 h-5" />
+            </button>
+          )}
           
           {linkPreview && (
               <div className="absolute bottom-full mb-2 inset-x-0 mx-2 bg-white border border-neutral-100 rounded-xl overflow-hidden shadow-xl p-3 flex gap-3">
@@ -2638,8 +2696,11 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                 handleSend();
               }
             }}
-            placeholder="Ask AI anything..."
-            className="flex-1 bg-transparent border-none outline-none resize-none max-h-32 py-2.5 text-sm font-semibold text-neutral-900 placeholder:text-neutral-400"
+            placeholder={activeVideoPlayer ? "Ask about current timestamp..." : "Ask AI anything..."}
+            className={cn(
+              "flex-1 bg-transparent border-none outline-none resize-none max-h-32 py-2.5 text-sm font-semibold text-neutral-900 placeholder:text-neutral-400",
+              activeVideoPlayer && "py-1.5"
+            )}
             rows={1}
           />
 
@@ -2657,7 +2718,8 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               disabled={isConnecting}
               className={cn(
                 "p-2.5 rounded-xl transition-all shrink-0 relative overflow-hidden active:scale-95",
-                isLive ? "bg-red-500 text-white" : "bg-white text-neutral-400 border border-neutral-100 hover:text-black hover:bg-neutral-50 shadow-sm"
+                isLive ? "bg-red-500 text-white" : "bg-white text-neutral-400 border border-neutral-100 hover:text-black hover:bg-neutral-50 shadow-sm",
+                activeVideoPlayer && "p-1.5"
               )}
             >
               {isLive && (
@@ -2677,7 +2739,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                 </motion.div>
               )}
               <div className="relative z-10">
-                {isConnecting ? <Loader2 className="w-5 h-5 animate-spin" /> : isLive ? <Square className="w-5 h-5 fill-current" /> : <Mic className="w-5 h-5" />}
+                {isConnecting ? <Loader2 className="w-5 h-5 animate-spin" /> : isLive ? <Square className="w-5 h-5 fill-current" /> : <Mic className={cn("w-5 h-5", activeVideoPlayer && "w-4 h-4")} />}
               </div>
             </button>
           )}
