@@ -41,7 +41,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="h-screen w-screen overflow-hidden bg-white text-black">
+      <div className="min-h-screen w-full bg-white text-black">
         <AnimatePresence mode="wait">
           <Routes>
             <Route path="/v/:userId/:fileId" element={<PublicViewWrapper />} />

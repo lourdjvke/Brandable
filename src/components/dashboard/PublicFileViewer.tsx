@@ -149,7 +149,7 @@ export default function PublicFileViewer({ userId, fileId }: { userId: string; f
   }
 
   return (
-    <div className="min-h-screen w-full bg-white text-black overflow-y-auto selection:bg-neutral-100">
+    <div className="min-h-screen w-full bg-white text-black selection:bg-neutral-100">
       <div className="max-w-[1400px] mx-auto px-6 py-12 md:py-20 lg:py-32">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
           
