@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { FileItem, UserProfile, Tag, TAG_COLORS } from "@/src/types";
-import { db } from "@/src/lib/firebase";
-import { doc, updateDoc, onSnapshot } from "firebase/firestore";
+import { db, rtdb } from "@/src/lib/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
+import { ref as dbRef, update, remove } from "firebase/database";
 import { 
   ArrowLeft, Save, Loader2, Edit3, MessageSquare, Twitter, 
   BrainCircuit, FileText, X, Plus, Image as ImageIcon,
@@ -318,7 +319,7 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
     setSaving(true);
     try {
       const htmlContent = editor.getHTML();
-      await updateDoc(doc(db, "files", file.id), {
+      const updates = {
         name,
         content: htmlContent, // Save as HTML
         tags,
@@ -326,7 +327,14 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
         isPublic,
         updatedAt: Date.now(),
         ...overrideData
-      });
+      };
+      // Important to use sanitized object for RTDB
+      const sanitizedUpdates = Object.entries(updates).reduce((acc: any, [key, value]) => {
+        if (value !== undefined) acc[key] = value;
+        return acc;
+      }, {});
+
+      await update(dbRef(rtdb, `files/${file.id}`), sanitizedUpdates);
       setHasUnsavedChanges(false);
       initialContent.current = htmlContent;
     } catch (err) {
@@ -343,7 +351,7 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
       if (hasUnsavedChanges) {
         await handleSave({ isPublic: newValue });
       } else {
-        await updateDoc(doc(db, "files", file.id), { isPublic: newValue, updatedAt: Date.now() });
+        await update(dbRef(rtdb, `files/${file.id}`), { isPublic: newValue, updatedAt: Date.now() });
       }
       setIsPublic(newValue);
       if (newValue) {

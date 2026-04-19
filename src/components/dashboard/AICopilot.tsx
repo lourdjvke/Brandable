@@ -132,7 +132,9 @@ function MessageBubble({
   setViewingImage, 
   onSpeak, 
   onRetry,
-  onAction
+  onAction,
+  onOpenSettings,
+  isRandomizerActive
 }: { 
   msg: ChatMessage; 
   viewingImage: string | null; 
@@ -140,6 +142,8 @@ function MessageBubble({
   onSpeak: (text: string) => void;
   onRetry: () => void;
   onAction?: (action: string, data: any) => void;
+  onOpenSettings?: () => void;
+  isRandomizerActive: boolean;
 }) {
   if (!msg) return null;
   const [isExpanded, setIsExpanded] = useState(false);
@@ -162,8 +166,8 @@ function MessageBubble({
   const renderContent = (content: string) => {
     // Check for YouTube data payload
     const ytMatch = content.match(/%YOUTUBE_DATA%([\s\S]*?)%END_YOUTUBE%/);
-    let ytVideos: any[] = [];
     let displayContent = content;
+    let ytVideos: any[] = [];
 
     if (ytMatch) {
       try {
@@ -183,83 +187,115 @@ function MessageBubble({
     }
 
     // Replace timestamps with clickable markdown links
+    // Handles both %TIMESTAMP% format and generic [00:15] or 00:15 formats
     displayContent = displayContent.replace(/%TIMESTAMP%(\[?\d{1,2}:\d{2}\]?)%END_TIMESTAMP%/gi, (match, time) => {
        const cleanTime = time.replace(/[\[\]]/g, '');
        return `[▶️ ${cleanTime}](timestamp:${cleanTime})`;
     });
 
-    const lines = displayContent.split('\n');
+    // Catch raw [MM:SS] or MM:SS patterns and turn into timestamps if they aren't already part of a link
+    // This is a bit more aggressive to ensure user request is met
+    displayContent = displayContent.replace(/(^|\s)\[?(\d{1,2}:\d{2})\]?(?!\))/g, (match, space, time) => {
+       return `${space}[▶️ ${time}](timestamp:${time})`;
+    });
+
     return (
       <>
-        {lines.map((line, i) => {
-          const trimmed = line.trim();
-          const isCommand = trimmed.toLowerCase().startsWith('command:') || 
-                            trimmed.startsWith('create_file') || 
-                            trimmed.startsWith('create_folder') || 
-                            trimmed.startsWith('update_file') || 
-                            trimmed.startsWith('delete_item') ||
-                            trimmed.startsWith('read_file') ||
-                            trimmed.startsWith('move_item') ||
-                            trimmed.startsWith('rename_item') ||
-                            trimmed.startsWith('open_item');
-
-          if (isCommand) {
-            return (
-              <div key={i} className="my-2 bg-neutral-50 border border-neutral-200 rounded-md overflow-hidden text-left">
-                <div 
-                  className="flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-neutral-100 transition-colors"
-                  onClick={() => setIsExpanded(!isExpanded)}
-                >
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                    <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">CMD</span>
-                    <span className={cn("text-xs font-mono text-neutral-600 truncate transition-all", !isExpanded && "max-w-[200px]")}>
-                      {trimmed.replace(/^command:\s*/, '')}
-                    </span>
-                  </div>
-                  <ChevronDown className={cn("w-4 h-4 text-neutral-400 transition-transform", isExpanded && "rotate-180")} />
-                </div>
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="px-3 pb-3 pt-1 border-t border-neutral-100">
-                        <pre className="text-[11px] font-mono text-neutral-800 whitespace-pre-wrap break-all leading-relaxed">
-                          {trimmed}
-                        </pre>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            );
-          }
-          return (
-            <ReactMarkdown key={i} components={{ 
-              p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-              a: ({ href, children }) => {
-                if (href?.startsWith('timestamp:')) {
-                  const time = href.replace('timestamp:', '');
+        <ReactMarkdown 
+          components={{ 
+            p: ({ children }) => {
+              // Check if children is a single string that looks like a command
+              const firstChild = children;
+              if (typeof firstChild === 'string') {
+                const trimmed = firstChild.trim();
+                const isCommand = trimmed.toLowerCase().startsWith('command:') || 
+                                  trimmed.startsWith('create_file') || 
+                                  trimmed.startsWith('create_folder') || 
+                                  trimmed.startsWith('update_file') || 
+                                  trimmed.startsWith('delete_item') ||
+                                  trimmed.startsWith('read_file') ||
+                                  trimmed.startsWith('move_item') ||
+                                  trimmed.startsWith('rename_item') ||
+                                  trimmed.startsWith('open_item');
+                
+                if (isCommand) {
                   return (
-                    <span 
-                      className="text-red-600 font-bold cursor-pointer hover:underline inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 bg-red-50 rounded"
-                      onClick={() => onAction?.('play_timestamp', time)}
-                    >
-                      <Youtube className="w-3 h-3" /> {children}
-                    </span>
+                    <div className="my-2 bg-neutral-50 border border-neutral-200 rounded-md overflow-hidden text-left not-prose">
+                      <div 
+                        className="flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-neutral-100 transition-colors"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setIsExpanded(!isExpanded);
+                        }}
+                      >
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">CMD</span>
+                          <span className={cn("text-xs font-mono text-neutral-600 truncate transition-all", !isExpanded && "max-w-[200px]")}>
+                            {trimmed.replace(/^command:\s*/, '')}
+                          </span>
+                        </div>
+                        <ChevronDown className={cn("w-4 h-4 text-neutral-400 transition-transform", isExpanded && "rotate-180")} />
+                      </div>
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="px-3 pb-3 pt-1 border-t border-neutral-100">
+                              <pre className="text-[11px] font-mono text-neutral-800 whitespace-pre-wrap break-all leading-relaxed">
+                                {trimmed}
+                              </pre>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   );
                 }
-                return <a href={href} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>
               }
-            }}>
-              {line}
-            </ReactMarkdown>
-          );
-        })}
+              return <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>;
+            },
+            a: ({ href, children }) => {
+              const isInternalTimestamp = href?.includes('timestamp:');
+              const isYoutubeTimestamp = href?.match(/(?:youtube\.com|youtu\.be).*?[?&]t=(\d+)/);
+              
+              if (isInternalTimestamp || isYoutubeTimestamp) {
+                let time = '00:00';
+                if (isInternalTimestamp) {
+                  const timeMatch = href.match(/timestamp:([\d:]+)/);
+                  time = timeMatch ? timeMatch[1] : '00:00';
+                } else if (isYoutubeTimestamp) {
+                  const totalSec = parseInt(isYoutubeTimestamp[1]);
+                  const mins = Math.floor(totalSec / 60);
+                  const secs = totalSec % 60;
+                  time = `${mins}:${secs.toString().padStart(2, '0')}`;
+                }
+
+                return (
+                  <button 
+                    type="button"
+                    className="inline-flex items-center gap-1.5 mx-0.5 px-2 py-1 bg-red-600/10 text-red-600 rounded-md text-[11px] font-bold hover:bg-red-600 hover:text-white transition-all active:scale-95 border border-red-200/50"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onAction?.('play_timestamp', time);
+                    }}
+                  >
+                    <Youtube className="w-3.5 h-3.5" />
+                    {children || time}
+                  </button>
+                );
+              }
+              return <a href={href} className="text-blue-500 hover:underline font-medium" target="_blank" rel="noopener noreferrer">{children}</a>
+            }
+          }}
+        >
+          {displayContent}
+        </ReactMarkdown>
 
         {transcriptionText && (
           <div className="mt-4 p-5 bg-neutral-900 text-neutral-300 rounded-2xl border border-neutral-800 shadow-inner group-hover:shadow-lg transition-all">
@@ -322,6 +358,27 @@ function MessageBubble({
              </div>
           </div>
         )}
+
+        {content.includes('%MODELS_FAILED_ACTION%') && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button 
+              onClick={() => onOpenSettings?.()}
+              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-neutral-200 text-neutral-900 rounded-lg text-xs font-bold hover:bg-neutral-50 transition-all active:scale-95 font-sans"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              Open Options
+            </button>
+            {!isRandomizerActive && (
+              <button 
+                onClick={() => onAction?.('activate_randomizer', null)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-neutral-900 text-white rounded-lg text-xs font-bold hover:bg-black transition-all active:scale-95 font-sans"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Activate Randomizer
+              </button>
+            )}
+          </div>
+        )}
       </>
     );
   };
@@ -343,7 +400,7 @@ function MessageBubble({
       <div className={cn(
         "rounded-md text-sm leading-relaxed",
         msg.role === "user" ? "bg-black text-white px-3 py-2 rounded-tr-none" : 
-        msg.role === "system" ? "bg-red-50 text-red-600 px-3 py-2 w-full" : 
+        msg.role === "system" ? "bg-red-50 text-red-600 px-3 py-3 w-full border border-red-100/50 shadow-sm" : 
         "bg-transparent text-black w-full"
       )}>
         {msg.imageUrls && msg.imageUrls.length > 0 && (
@@ -370,7 +427,7 @@ function MessageBubble({
               Voice Action
             </div>
           )}
-          {msg.role === 'assistant' ? renderContent(msg.content) : (
+          {(msg.role === 'assistant' || msg.role === 'system') ? renderContent(msg.content) : (
             <ReactMarkdown>{msg.content}</ReactMarkdown>
           )}
         </div>
@@ -565,6 +622,18 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
     }
   }, [propSessionId]);
 
+  const deleteSession = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this chat session?")) return;
+    try {
+      await remove(dbRef(rtdb, `chatSessions/${id}`));
+      if (currentSessionId === id) {
+        setCurrentSessionId(null);
+      }
+    } catch (err) {
+      console.error("Error deleting session:", err);
+    }
+  };
+
   const [attachedImages, setAttachedImages] = useState<{ url: string; file: File }[]>([]);
   const [isWatchingVideo, setIsWatchingVideo] = useState(false);
   const [activeVideoPlayer, setActiveVideoPlayer] = useState<{ videoId: string, timeSeconds: number, isMinimized?: boolean } | null>(null);
@@ -572,6 +641,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   const [viewingImage, setViewingImage] = useState<string | null>(null);
 
   const [debouncedInput, setDebouncedInput] = useState(input);
+  const [isRandomizerActive, setIsRandomizerActive] = useState(() => localStorage.getItem("gemini_random_model") === "true");
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -1180,30 +1250,27 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
     }
 
     try {
-      const useRandomModel = localStorage.getItem("gemini_random_model") === "true";
+      const useRandomModel = isRandomizerActive;
       const availableModels = TEXT_MODELS.map(m => m.id);
       
-      let attempts = 0;
       let lastError = null;
       let finalResponse = null;
       
-      // If randomizing, pick one immediately. Otherwise use the selected one.
-      let usedModelName = useRandomModel 
-        ? availableModels[Math.floor(Math.random() * availableModels.length)]
-        : selectedModel;
+      // Track untried models to avoid repeating in random mode
+      let untriedModels = useRandomModel ? [...availableModels] : [selectedModel];
 
       // Prepare final content for AI including metadata summary if any
       const lastUserMsgContent = linkMetadataSummary 
         ? `${userMsgContent}\n\nLink Metadata Provided:\n${linkMetadataSummary}\n(AI: Use this metadata instead of read_url if it covers what you need)`
         : userMsgContent;
 
-      while (attempts < 3) {
-        try {
-          // On retries, if randomizing, pick a new one.
-          if (attempts > 0 && useRandomModel) {
-            usedModelName = availableModels[Math.floor(Math.random() * availableModels.length)];
-          }
+      while (untriedModels.length > 0) {
+        // Pick a model
+        let usedModelName = useRandomModel 
+          ? untriedModels.splice(Math.floor(Math.random() * untriedModels.length), 1)[0]
+          : untriedModels.shift()!;
 
+        try {
           const functionDeclarations = [
             {
               name: "create_file",
@@ -1649,11 +1716,15 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           }
           setToolExecutionStatus(null);
           break; // Success!
-        } catch (err) {
+        } catch (err: any) {
           if (typeof setIsWatchingVideo === 'function') setIsWatchingVideo(false);
-          console.error(`Attempt ${attempts + 1} failed with model ${usedModelName}:`, err);
+          console.error(`Attempt failed with model ${usedModelName}:`, err);
+          
+          const isQuota = err.message?.toLowerCase().includes('quota') || 
+                          err.message?.toLowerCase().includes('429');
+          
           lastError = err;
-          attempts++;
+          // If random mode is on, we keep trying other models in untriedModels
           if (!useRandomModel) break; 
         }
       }
@@ -1675,12 +1746,17 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       if (finalSession && (finalSession.title === "New Chat" || !finalSession.title)) {
         generateTitle(sessionId, `${userMsgContent} ${responseText}`);
       }
-    } catch (err) {
+    } catch (err: any) {
       if (typeof setIsWatchingVideo === 'function') setIsWatchingVideo(false);
       console.error("Chat error:", err);
+      
+      const errorMessage = err.message?.includes('quota') 
+        ? "Model failed: Quota exceeded (429). Please wait or switch models."
+        : `Model failed: ${err.message || String(err)}`;
+
       await saveMessage(sessionId, {
         role: "system",
-        content: "Error communicating with AI. Please check your API key.",
+        content: `${errorMessage}\n\n%MODELS_FAILED_ACTION%`,
         createdAt: Date.now()
       });
     } finally {
@@ -2220,9 +2296,21 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   };
 
   const handleMessageAction = (action: string, data: any) => {
+    if (action === 'activate_randomizer') {
+      localStorage.setItem("gemini_random_model", "true");
+      setIsRandomizerActive(true);
+      return;
+    }
+
     if (action === 'watch_video') {
       const url = data.link || "";
       const title = data.title || "video";
+      
+      const ytMatch = url.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      if (ytMatch && ytMatch[1]) {
+        setActiveVideoPlayer({ videoId: ytMatch[1], timeSeconds: 0 });
+      }
+
       setInput(`Tell me more about this video: ${title} (${url})`);
       handleSend(`I'm clicking on this video: ${title}. Please provide more details and options like summarize or transcribe. URL: ${url}`);
     } else if (action === 'play_timestamp') {
@@ -2234,20 +2322,38 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       if (parts[2]) seconds += parts[2] * 3600;
 
       const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-      let lastVideoId = null;
-      const allMessagesReversed = [...messages].reverse();
-      for (let i = 0; i < allMessagesReversed.length; i++) {
-         const match = allMessagesReversed[i].content.match(ytRegex);
-         if (match && match[1]) {
-           lastVideoId = match[1];
-           break;
-         }
-      }
+      let lastVideoId = activeVideoPlayer?.videoId || null;
       
+      if (!lastVideoId) {
+        const allMessagesReversed = [...messages].reverse();
+        for (let i = 0; i < allMessagesReversed.length; i++) {
+           const content = allMessagesReversed[i].content;
+           const match = content.match(ytRegex);
+           if (match && match[1]) {
+             lastVideoId = match[1];
+             break;
+           }
+           // Also check for hidden JSON data
+           const jsonMatch = content.match(/%YOUTUBE_DATA%([\s\S]*?)%END_YOUTUBE%/);
+           if (jsonMatch) {
+             try {
+               const parsed = JSON.parse(jsonMatch[1]);
+               const vids = Array.isArray(parsed) ? parsed : (parsed.videos || []);
+               if (vids.length > 0) {
+                 lastVideoId = vids[0].id;
+                 break;
+               }
+             } catch (e) {}
+           }
+        }
+      }
+
       if (lastVideoId) {
         setActiveVideoPlayer({ videoId: lastVideoId, timeSeconds: seconds });
+        // Scroll to the new player position if it was out of view
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
-        console.error("Could not find a video ID to play the timestamp for.");
+        alert("No video discovered in this chat yet. Please share a YouTube link first!");
       }
     }
   };
@@ -2256,79 +2362,43 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
     <div className="flex flex-col h-full bg-white relative overflow-hidden">
       {/* Header */}
       <div className={cn(
-        "flex items-center justify-between px-4 h-14 border-b border-neutral-100 bg-white sticky top-0 z-10 shrink-0 transition-all",
-        activeVideoPlayer && "md:h-14 h-10" // Compressing header on mobile when player active
+        "flex items-center justify-between px-4 h-14 border-b border-neutral-100 bg-white z-10 shrink-0 transition-all",
+        activeVideoPlayer && "md:h-14 h-12"
       )}>
         <div className="flex items-center gap-2.5">
           <div className={cn(
-            "p-2 bg-neutral-50 border border-neutral-100 rounded-lg transition-all",
-            activeVideoPlayer && "md:p-2 p-1.5"
+            "p-2 bg-neutral-50 border border-neutral-100 rounded-lg transition-all relative overflow-hidden",
+            activeVideoPlayer && "p-2"
           )}>
-            <BrainCircuit className={cn("w-5 h-5 text-black transition-all", activeVideoPlayer && "md:w-5 md:h-5 w-4 h-4")} />
+            <BrainCircuit className={cn("w-5 h-5 text-black transition-all", activeVideoPlayer && "w-4 h-4")} />
+            {activeVideoPlayer && (
+               <motion.div 
+                 animate={{ opacity: [0.4, 1, 0.4] }} 
+                 transition={{ duration: 2, repeat: Infinity }}
+                 className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white" 
+               />
+            )}
           </div>
-          <div>
-            <h2 className={cn("text-sm font-bold text-neutral-900 tracking-tight transition-all", activeVideoPlayer && "md:text-sm text-xs leading-none")}>AI Copilot</h2>
-            <div className={cn("relative group/model transition-all", activeVideoPlayer && "md:block hidden")}>
-              <button 
-                className="flex items-center gap-1 text-[10px] font-medium text-neutral-400 uppercase tracking-widest hover:text-black transition-colors"
-                onClick={() => !isLive && setShowModelSelector(!showModelSelector)}
-              >
-                {isLive ? "Live Voice" : (localStorage.getItem("gemini_random_model") === "true" ? "Random Mode" : "Chat Mode")}
-                {!isLive && <ChevronDown className="w-2.5 h-2.5" />}
-              </button>
-              
-              <AnimatePresence>
-                {showModelSelector && !isLive && (
-                  <>
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="fixed inset-0 z-40"
-                      onClick={() => setShowModelSelector(false)}
-                    />
-                    <motion.div 
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="absolute top-full left-0 mt-2 w-48 bg-white border border-neutral-100 rounded-xl shadow-2xl z-50 overflow-hidden py-1.5"
-                    >
-                      {localStorage.getItem("gemini_random_model") === "true" && (
-                        <div className="px-4 py-2 border-b border-neutral-50 mb-1">
-                          <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Randomization Active</span>
-                        </div>
-                      )}
-                      {TEXT_MODELS.map((m) => (
-                        <button
-                          key={m.id}
-                          disabled={localStorage.getItem("gemini_random_model") === "true"}
-                          onClick={() => {
-                            setSelectedModel(m.id);
-                            setShowModelSelector(false);
-                          }}
-                          className={cn(
-                            "w-full px-4 py-2.5 text-left transition-all flex flex-col gap-0.5",
-                            selectedModel === m.id ? "bg-neutral-50" : "bg-transparent",
-                            localStorage.getItem("gemini_random_model") === "true" ? "opacity-50 grayscale cursor-not-allowed" : "hover:bg-neutral-50"
-                          )}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className={cn("text-xs font-bold", selectedModel === m.id ? "text-black" : "text-neutral-600")}>
-                              {m.name}
-                            </span>
-                            {selectedModel === m.id && <Check className="w-3 h-3 text-black" />}
-                          </div>
-                          <span className="text-[10px] text-neutral-400 font-medium">{m.desc}</span>
-                        </button>
-                      ))}
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-            </div>
+          <div className="flex flex-col">
+            <h2 className={cn("text-sm font-extrabold text-neutral-900 tracking-tight transition-all", activeVideoPlayer && "text-xs leading-none mb-0.5")}>AI Copilot</h2>
+            {activeVideoPlayer && (
+               <div className="flex items-center gap-1.5 overflow-hidden">
+                 <Youtube className="w-2.5 h-2.5 text-red-600" />
+                 <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest truncate max-w-[120px]">Active Video</span>
+               </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          {activeVideoPlayer?.isMinimized && (
+            <button 
+              onClick={() => setActiveVideoPlayer(prev => prev ? { ...prev, isMinimized: false } : null)}
+              className="px-2 py-1 bg-red-50 text-red-600 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-red-100 transition-all flex items-center gap-1.5"
+            >
+              <Youtube className="w-3 h-3" />
+              Maximize
+            </button>
+          )}
           <button 
             onClick={() => setShowSessions(true)}
             className="p-2.5 text-neutral-400 hover:text-black hover:bg-neutral-50 rounded-xl transition-all active:scale-95"
@@ -2384,14 +2454,14 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                   ) : (
                     <div className="grid gap-2">
                       {sessions.map((s) => (
-                        <button
+                        <div
                           key={s.id}
                           onClick={() => {
                             setCurrentSessionId(s.id);
                             setShowSessions(false);
                           }}
                           className={cn(
-                            "group w-full max-w-full flex items-center justify-between gap-2 p-4 rounded-2xl transition-all border text-left overflow-hidden",
+                            "group w-full max-w-full flex items-center justify-between gap-2 p-4 rounded-2xl transition-all border text-left overflow-hidden cursor-pointer",
                             currentSessionId === s.id 
                               ? "bg-black border-black text-white" 
                               : "bg-white border-neutral-50 hover:bg-neutral-50 text-neutral-600"
@@ -2406,13 +2476,27 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                                {s.title ? cleanText(s.title) : "Untitled Chat"}
                              </span>
                           </div>
-                          <div className={cn(
-                            "shrink-0 text-[10px] uppercase font-bold tracking-widest opacity-40 group-hover:opacity-100 transition-opacity",
-                            currentSessionId === s.id ? "text-white" : "text-neutral-400"
-                          )}>
-                             {new Date(s.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                          <div className="flex items-center gap-3">
+                            <div className={cn(
+                              "shrink-0 text-[10px] uppercase font-bold tracking-widest opacity-40 group-hover:opacity-100 transition-opacity",
+                              currentSessionId === s.id ? "text-white" : "text-neutral-400"
+                            )}>
+                               {new Date(s.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteSession(s.id);
+                              }}
+                              className={cn(
+                                "p-1.5 rounded-lg transition-all opacity-0 group-hover:opacity-100 hover:bg-red-500 hover:text-white",
+                                currentSessionId === s.id ? "text-white/40 hover:text-white hover:bg-white/20" : "text-neutral-300"
+                              )}
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
                           </div>
-                        </button>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -2423,69 +2507,80 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
         )}
       </AnimatePresence>
 
-      <div 
-        ref={scrollContainerRef}
-        onScroll={handleScroll}
-        className={cn(
-          "flex-1 overflow-y-auto p-4 space-y-8 flex flex-col scroll-smooth custom-scrollbar relative transition-all",
-          activeVideoPlayer && "md:p-4 p-2 md:space-y-8 space-y-4" // Tighter spacing on mobile when player active
-        )}
-      >
-        {activeVideoPlayer && (
-          <div className="sticky top-0 z-30 w-full mb-4 shrink-0 bg-white/95 shadow-2xl rounded-2xl overflow-hidden border border-neutral-100/50 backdrop-blur-2xl ring-1 ring-black/5">
-             <div className="flex items-center justify-between px-4 py-2.5 bg-neutral-50/80 border-b border-neutral-100/50">
+      {/* Persistent Video Player Area */}
+      <AnimatePresence>
+        {activeVideoPlayer && !activeVideoPlayer.isMinimized && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="w-full bg-white border-b border-neutral-100 shadow-xl z-20 overflow-hidden relative"
+          >
+            <div className="flex items-center justify-between px-4 py-2 bg-neutral-50 border-b border-neutral-100/50">
                <div className="flex items-center gap-2.5">
                  <div className="p-1 bg-red-600/10 rounded-lg">
                    <Youtube className="w-4 h-4 text-red-600" />
                  </div>
                  <div className="flex flex-col">
                    <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-900">Reference Player</span>
-                   <span className="text-[9px] font-medium text-neutral-400">Jumping to {Math.floor(activeVideoPlayer.timeSeconds / 60)}:{(activeVideoPlayer.timeSeconds % 60).toString().padStart(2, '0')}</span>
+                   <span className="text-[9px] font-medium text-neutral-400">Time: {Math.floor(activeVideoPlayer.timeSeconds / 60)}:{(activeVideoPlayer.timeSeconds % 60).toString().padStart(2, '0')}</span>
                  </div>
                </div>
                <div className="flex items-center gap-2">
                  <button 
-                  onClick={() => setActiveVideoPlayer(prev => prev ? { ...prev, isMinimized: !prev.isMinimized } : null)}
+                  onClick={() => setActiveVideoPlayer(prev => prev ? { ...prev, isMinimized: true } : null)}
                   className="p-1.5 hover:bg-neutral-200 rounded-full transition-colors active:scale-95 text-neutral-400 hover:text-neutral-900"
+                  title="Minimize"
                  >
                    <Minimize2 className="w-4 h-4" />
                  </button>
-                 <button onClick={() => setActiveVideoPlayer(null)} className="p-1.5 hover:bg-red-50 rounded-full transition-colors active:scale-95 text-neutral-400 hover:text-red-600">
+                 <button 
+                   onClick={() => setActiveVideoPlayer(null)} 
+                   className="p-1.5 hover:bg-red-50 rounded-full transition-colors active:scale-95 text-neutral-400 hover:text-red-600"
+                   title="Close"
+                 >
                    <X className="w-4 h-4" />
                  </button>
                </div>
-             </div>
-             {!activeVideoPlayer.isMinimized && (
-               <div className="aspect-video w-full bg-black relative">
-                 <iframe 
-                   key={activeVideoPlayer.videoId + (activeVideoPlayer.timeSeconds || 0)} // Using key to force reload for timestamp seek if API not used
-                   src={`https://www.youtube.com/embed/${activeVideoPlayer.videoId}?start=${activeVideoPlayer.timeSeconds}&autoplay=1&rel=0&modestbranding=1`} 
-                   allow="autoplay; encrypted-media" 
-                   allowFullScreen 
-                   className="w-full h-full border-0"
-                 />
-                 {isWatchingVideo && (
-                    <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center pointer-events-none">
-                       <div className="flex flex-col items-center gap-3">
-                          <div className="flex gap-1.5">
-                             {[0, 1, 2].map(i => (
-                               <motion.div 
-                                 key={i}
-                                 animate={{ height: [8, 16, 8] }}
-                                 transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15 }}
-                                 className="w-1 bg-red-500 rounded-full"
-                               />
-                             ))}
-                          </div>
-                          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white animate-pulse">Analyzing Frames</span>
+            </div>
+            <div className="aspect-video w-full bg-black relative">
+              <iframe 
+                key={activeVideoPlayer.videoId + (activeVideoPlayer.timeSeconds || 0)} 
+                src={`https://www.youtube.com/embed/${activeVideoPlayer.videoId}?start=${activeVideoPlayer.timeSeconds}&autoplay=1&rel=0&modestbranding=1`} 
+                allow="autoplay; encrypted-media" 
+                allowFullScreen 
+                className="w-full h-full border-0 absolute inset-0"
+              />
+              {isWatchingVideo && (
+                 <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center pointer-events-none">
+                    <div className="flex flex-col items-center gap-3">
+                       <div className="flex gap-1.5">
+                          {[0, 1, 2].map(i => (
+                            <motion.div 
+                              key={i}
+                              animate={{ height: [8, 16, 8] }}
+                              transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15 }}
+                              className="w-1 bg-red-500 rounded-full"
+                            />
+                          ))}
                        </div>
+                       <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white animate-pulse">Analyzing Frames</span>
                     </div>
-                 )}
-               </div>
-             )}
-          </div>
+                 </div>
+              )}
+            </div>
+          </motion.div>
         )}
+      </AnimatePresence>
 
+      <div 
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className={cn(
+          "flex-1 overflow-y-auto p-4 space-y-8 flex flex-col scroll-smooth custom-scrollbar relative transition-all",
+          activeVideoPlayer && !activeVideoPlayer.isMinimized && "md:p-4 p-2 md:space-y-8 space-y-4" 
+        )}
+      >
         {messages.length === 0 ? (
           <div className={cn(
             "flex-1 flex flex-col items-center justify-center p-8 space-y-6 text-center max-w-sm mx-auto transition-all",
@@ -2533,6 +2628,8 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               onSpeak={handleSpeak}
               onRetry={() => handleSend(msg.content)}
               onAction={handleMessageAction}
+              onOpenSettings={onOpenSettings}
+              isRandomizerActive={isRandomizerActive}
             />
           ))
         )}
@@ -2553,6 +2650,8 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                 onSpeak={handleSpeak}
                 onRetry={() => handleSend(liveUserTranscript)}
                 onAction={handleMessageAction}
+                onOpenSettings={onOpenSettings}
+                isRandomizerActive={isRandomizerActive}
               />
             )}
             {lastLiveResponse && (
@@ -2568,6 +2667,8 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                 onSpeak={handleSpeak} 
                 onRetry={() => {}} 
                 onAction={handleMessageAction}
+                onOpenSettings={onOpenSettings}
+                isRandomizerActive={isRandomizerActive}
               />
             )}
           </div>
