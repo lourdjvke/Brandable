@@ -11,12 +11,17 @@ export function useTheme() {
 
     const applyTheme = (t: Theme) => {
       root.classList.remove('light', 'dark');
-      if (t === 'system') {
-        const isDark = mediaQuery.matches;
-        root.classList.add(isDark ? 'dark' : 'light');
-      } else {
-        root.classList.add(t);
+      const isDark = t === 'dark' || (t === 'system' && mediaQuery.matches);
+      root.classList.add(isDark ? 'dark' : 'light');
+      
+      // Update theme-color meta tag for mobile status bar
+      let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+      if (!metaThemeColor) {
+        metaThemeColor = document.createElement('meta');
+        metaThemeColor.setAttribute('name', 'theme-color');
+        document.head.appendChild(metaThemeColor);
       }
+      metaThemeColor.setAttribute('content', isDark ? '#000000' : '#FF6719');
     };
 
     localStorage.setItem('theme', theme);

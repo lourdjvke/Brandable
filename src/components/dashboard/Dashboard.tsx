@@ -112,6 +112,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   }, [currentSessionId]);
   
   const [files, setFiles] = useState<FileItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const aiCopilotRef = useRef<any>(null);
   const voiceAssistantRef = useRef<any>(null);
@@ -133,6 +134,19 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
     return obj;
   };
 
+  // Load from IndexedDB on mount
+  useEffect(() => {
+    const loadLocal = async () => {
+      const { getFiles } = await import("@/src/lib/db");
+      const localFiles = await getFiles();
+      if (localFiles.length > 0) {
+        setFiles(localFiles);
+      }
+      setLoading(false);
+    };
+    loadLocal();
+  }, []);
+
   useEffect(() => {
     if (!profile.uid) return;
     const filesRef = dbRef(rtdb, "files");
@@ -143,8 +157,11 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
           .map(([id, f]: [string, any]) => ({ id, ...f } as FileItem))
           .filter(f => f.ownerId === profile.uid);
         setFiles(fileList);
+        // Persist to IndexedDB
+        saveFiles(fileList);
       } else {
         setFiles([]);
+        saveFiles([]);
       }
     });
     return () => unsub();
@@ -169,23 +186,35 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   };
 
   const handleCreateFolder = async (name: string) => {
-    try {
-      const newFolder = {
-        name,
-        type: "folder" as const,
-        parentId: currentFolderId,
-        ownerId: profile.uid,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        tags: [],
-        color: "#3b82f6"
-      };
-      const newRef = push(dbRef(rtdb, "files"));
-      await set(newRef, newFolder);
-      return newRef.key!;
-    } catch (err) {
-      console.error("Error creating folder:", err);
+    const id = push(dbRef(rtdb, "files")).key!;
+    const newFolder = {
+      id,
+      name,
+      type: "folder" as const,
+      parentId: currentFolderId,
+      ownerId: profile.uid,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      tags: [],
+      color: "#FF6719"
+    };
+
+    // Optimistic Update
+    const updatedFiles = [...files, newFolder];
+    setFiles(updatedFiles);
+    await saveFiles(updatedFiles);
+
+    if (isOnline) {
+      try {
+        await set(dbRef(rtdb, `files/${id}`), newFolder);
+      } catch (err) {
+        console.error("Online creation failed, queuing...", err);
+        await enqueueMutation('createFile', { id, item: newFolder });
+      }
+    } else {
+      await enqueueMutation('createFile', { id, item: newFolder });
     }
+    return id;
   };
 
   const logActionToChat = async (messageContent: string, isSilent: boolean = false, role: 'user' | 'assistant' | 'system' = 'assistant') => {
@@ -233,23 +262,35 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   };
 
   const handleCreateFile = async (name: string, folderId: string | null, content: string = "", type: FileType = "script") => {
-    try {
-      const newFile = {
-        name,
-        type,
-        parentId: folderId,
-        ownerId: profile.uid,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        tags: [],
-        content
-      };
-      const newRef = push(dbRef(rtdb, "files"));
-      await set(newRef, newFile);
-      return newRef.key!;
-    } catch (err) {
-      console.error("Error creating file:", err);
+    const id = push(dbRef(rtdb, "files")).key!;
+    const newFile = {
+      id,
+      name,
+      type,
+      parentId: folderId,
+      ownerId: profile.uid,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      tags: [],
+      content
+    };
+
+    // Optimistic Update
+    const updatedFiles = [...files, newFile];
+    setFiles(updatedFiles);
+    await saveFiles(updatedFiles);
+
+    if (isOnline) {
+      try {
+        await set(dbRef(rtdb, `files/${id}`), newFile);
+      } catch (err) {
+        console.error("Online creation failed, queuing...", err);
+        await enqueueMutation('createFile', { id, item: newFile });
+      }
+    } else {
+      await enqueueMutation('createFile', { id, item: newFile });
     }
+    return id;
   };
 
   const handleUpdateFile = async (id: string, updates: Partial<FileItem>) => {
@@ -266,10 +307,19 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   };
 
   const handleDeleteFile = async (id: string) => {
-    try {
-      await remove(dbRef(rtdb, `files/${id}`));
-    } catch (err) {
-      console.error("Error deleting file:", err);
+    // Optimistic
+    const updatedFiles = files.filter(f => f.id !== id);
+    setFiles(updatedFiles);
+    await saveFiles(updatedFiles);
+
+    if (isOnline) {
+      try {
+        await remove(dbRef(rtdb, `files/${id}`));
+      } catch (err) {
+        await enqueueMutation('deleteFile', { id });
+      }
+    } else {
+      await enqueueMutation('deleteFile', { id });
     }
   };
 
@@ -296,6 +346,34 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
 
   return (
     <div className="h-full flex bg-[#f8f9fa] dark:bg-black relative overflow-y-auto">
+      {/* Status Indicators */}
+      <div className="fixed top-4 right-4 z-[60] flex items-center gap-3">
+        <AnimatePresence>
+          {!isOnline && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, x: 20 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.9, x: 20 }}
+              className="px-3 py-1.5 bg-red-600 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg flex items-center gap-2 border border-red-500"
+            >
+              <WifiOff className="w-3 h-3" />
+              Offline
+            </motion.div>
+          )}
+          {isSyncing && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: -20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: -20 }}
+              className="px-3 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg flex items-center gap-2 border border-primary/20"
+            >
+              <RefreshCw className="w-3 h-3 animate-spin" />
+              Syncing...
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
       {/* Sidebar - Hidden on mobile/tablet during editing or when overridden */}
       {!isEditing && (
         <div className={cn("hidden lg:block", isTablet && "hidden")}>

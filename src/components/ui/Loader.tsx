@@ -48,14 +48,6 @@ export default function Loader() {
             />
           ))}
         </div>
-        <motion.p 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="text-white/80 text-[10px] font-bold uppercase tracking-[0.3em]"
-        >
-          Initializing Brandable
-        </motion.p>
       </div>
     </motion.div>
   );

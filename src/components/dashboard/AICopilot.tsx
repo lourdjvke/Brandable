@@ -2359,18 +2359,18 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white relative overflow-hidden">
+    <div className="flex flex-col h-full bg-white dark:bg-black relative overflow-hidden">
       {/* Header */}
       <div className={cn(
-        "flex items-center justify-between px-4 h-14 border-b border-neutral-100 bg-white z-10 shrink-0 transition-all",
+        "flex items-center justify-between px-4 h-14 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-black z-10 shrink-0 transition-all",
         activeVideoPlayer && "md:h-14 h-12"
       )}>
         <div className="flex items-center gap-2.5">
           <div className={cn(
-            "p-2 bg-neutral-50 border border-neutral-100 rounded-lg transition-all relative overflow-hidden",
+            "p-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-lg transition-all relative overflow-hidden",
             activeVideoPlayer && "p-2"
           )}>
-            <BrainCircuit className={cn("w-5 h-5 text-black transition-all", activeVideoPlayer && "w-4 h-4")} />
+            <BrainCircuit className={cn("w-5 h-5 text-black dark:text-white transition-all", activeVideoPlayer && "w-4 h-4")} />
             {activeVideoPlayer && (
                <motion.div 
                  animate={{ opacity: [0.4, 1, 0.4] }} 
@@ -2429,17 +2429,17 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
-              className="absolute bottom-0 inset-x-0 h-[50vh] bg-white rounded-t-[32px] z-50 flex flex-col overflow-hidden shadow-2xl border-t border-neutral-100"
+              className="absolute bottom-0 inset-x-0 h-[50vh] bg-white dark:bg-neutral-900 rounded-t-[32px] z-50 flex flex-col overflow-hidden shadow-2xl border-t border-neutral-100 dark:border-neutral-800"
             >
-              <div className="flex flex-col h-full bg-white">
-                <div className="flex items-center justify-between px-6 py-5 border-b border-neutral-100">
+              <div className="flex flex-col h-full bg-white dark:bg-neutral-900">
+                <div className="flex items-center justify-between px-6 py-5 border-b border-neutral-100 dark:border-neutral-800">
                   <div className="flex items-center gap-3">
                     <History className="w-5 h-5 text-neutral-400" />
-                    <h3 className="font-bold text-neutral-900 leading-none">History</h3>
+                    <h3 className="font-bold text-neutral-900 dark:text-white leading-none">History</h3>
                   </div>
                   <button 
                     onClick={createNewSession}
-                    className="p-2 bg-black text-white rounded-full hover:scale-110 active:scale-95 transition-all"
+                    className="p-2 bg-black dark:bg-primary text-white rounded-full hover:scale-110 active:scale-95 transition-all"
                   >
                     <Plus className="w-5 h-5" />
                   </button>
@@ -2463,8 +2463,8 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                           className={cn(
                             "group w-full max-w-full flex items-center justify-between gap-2 p-4 rounded-2xl transition-all border text-left overflow-hidden cursor-pointer",
                             currentSessionId === s.id 
-                              ? "bg-black border-black text-white" 
-                              : "bg-white border-neutral-50 hover:bg-neutral-50 text-neutral-600"
+                              ? "bg-black dark:bg-primary border-black dark:border-primary text-white" 
+                              : "bg-white dark:bg-neutral-900 border-neutral-50 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
                           )}
                         >
                           <div className="flex items-center gap-3 flex-1 min-w-0 pr-2">

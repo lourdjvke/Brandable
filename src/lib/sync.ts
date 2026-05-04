@@ -13,12 +13,16 @@ export const syncQueue = async () => {
       if (mutation.type === 'updateFile') {
          const { id, updates } = mutation.payload;
          await update(ref(rtdb, `files/${id}`), { ...updates, updatedAt: Date.now() });
-         successfulIds.push(mutation.id);
+      } else if (mutation.type === 'createFile') {
+         const { id, item } = mutation.payload;
+         await set(ref(rtdb, `files/${id}`), { ...item, updatedAt: Date.now() });
+      } else if (mutation.type === 'deleteFile') {
+         const { id } = mutation.payload;
+         await remove(ref(rtdb, `files/${id}`));
       }
-      // Add other mutation types as needed
+      successfulIds.push(mutation.id);
     } catch (err) {
       console.error('Failed to sync mutation:', mutation, err);
-      // Stop or continue? Continue allows other mutations to try.
     }
   }
 
