@@ -107,18 +107,18 @@ function LinkPreview({ url }: { url: string }) {
       href={url} 
       target="_blank" 
       rel="noopener noreferrer"
-      className="flex flex-col gap-2 p-3 my-2 bg-neutral-50 border border-neutral-200 rounded-lg hover:bg-neutral-100 transition-colors group no-underline max-w-full overflow-hidden"
+      className="flex flex-col gap-2 p-3 my-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors group no-underline max-w-full overflow-hidden"
     >
       <div className="flex gap-3 items-start min-w-0">
         {metadata.image && (
           <img src={metadata.image} alt="" className="w-16 h-16 rounded object-cover shrink-0" referrerPolicy="no-referrer" />
         )}
         <div className="flex flex-col gap-0.5 overflow-hidden min-w-0 flex-1">
-          <span className="text-sm font-semibold text-neutral-900 truncate group-hover:text-black block">{metadata.title}</span>
-          {metadata.description && <p className="text-xs text-neutral-500 line-clamp-2 leading-relaxed">{metadata.description}</p>}
+          <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate group-hover:text-black dark:group-hover:text-white block">{metadata.title}</span>
+          {metadata.description && <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2 leading-relaxed">{metadata.description}</p>}
           <div className="flex items-center gap-1.5 mt-1 overflow-hidden min-w-0">
              <img src={`https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`} alt="" className="w-3 h-3 rounded-sm shrink-0 grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100 transition-all" />
-             <span className="text-[10px] text-neutral-400 truncate">{new URL(url).hostname}</span>
+             <span className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate">{new URL(url).hostname}</span>
           </div>
         </div>
       </div>
@@ -220,9 +220,9 @@ function MessageBubble({
                 
                 if (isCommand) {
                   return (
-                    <div className="my-2 bg-neutral-50 border border-neutral-200 rounded-md overflow-hidden text-left not-prose">
+                    <div className="my-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-md overflow-hidden text-left not-prose">
                       <div 
-                        className="flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-neutral-100 transition-colors"
+                        className="flex items-center justify-between px-3 py-1.5 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
                         onClick={(e) => {
                           e.preventDefault();
                           setIsExpanded(!isExpanded);
@@ -230,12 +230,12 @@ function MessageBubble({
                       >
                         <div className="flex items-center gap-2 overflow-hidden">
                           <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-                          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">CMD</span>
-                          <span className={cn("text-xs font-mono text-neutral-600 truncate transition-all", !isExpanded && "max-w-[200px]")}>
+                          <span className="text-[10px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-widest">CMD</span>
+                          <span className={cn("text-xs font-mono text-neutral-600 dark:text-neutral-400 truncate transition-all", !isExpanded && "max-w-[200px]")}>
                             {trimmed.replace(/^command:\s*/, '')}
                           </span>
                         </div>
-                        <ChevronDown className={cn("w-4 h-4 text-neutral-400 transition-transform", isExpanded && "rotate-180")} />
+                        <ChevronDown className={cn("w-4 h-4 text-neutral-400 dark:text-neutral-500 transition-transform", isExpanded && "rotate-180")} />
                       </div>
                       <AnimatePresence>
                         {isExpanded && (
@@ -245,8 +245,8 @@ function MessageBubble({
                             exit={{ opacity: 0, height: 0 }}
                             className="overflow-hidden"
                           >
-                            <div className="px-3 pb-3 pt-1 border-t border-neutral-100">
-                              <pre className="text-[11px] font-mono text-neutral-800 whitespace-pre-wrap break-all leading-relaxed">
+                            <div className="px-3 pb-3 pt-1 border-t border-neutral-100 dark:border-neutral-800">
+                              <pre className="text-[11px] font-mono text-neutral-800 dark:text-neutral-300 whitespace-pre-wrap break-all leading-relaxed">
                                 {trimmed}
                               </pre>
                             </div>
@@ -334,12 +334,12 @@ function MessageBubble({
                     key={video.id}
                     whileHover={{ y: -4 }}
                     onClick={() => onAction?.('watch_video', video)}
-                    className="w-48 shrink-0 bg-white border border-neutral-100 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer snap-start"
+                    className="w-48 shrink-0 bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all cursor-pointer snap-start"
                   >
-                    <div className="aspect-video relative bg-neutral-100">
+                    <div className="aspect-video relative bg-neutral-100 dark:bg-neutral-950">
                       <img src={video.thumbnail} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      <div className="absolute inset-0 bg-black/5 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
-                        <motion.div initial={{ scale: 0.5 }} whileHover={{ scale: 1 }} className="bg-white/90 p-2 rounded-full backdrop-blur-sm">
+                      <div className="absolute inset-0 bg-black/5 dark:bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                        <motion.div initial={{ scale: 0.5 }} whileHover={{ scale: 1 }} className="bg-white/90 dark:bg-black/90 p-2 rounded-full backdrop-blur-sm">
                            <Youtube className="w-5 h-5 text-red-600" />
                         </motion.div>
                       </div>
@@ -348,9 +348,9 @@ function MessageBubble({
                       </div>
                     </div>
                     <div className="p-2 space-y-0.5">
-                      <h4 className="text-[10px] font-bold text-neutral-900 line-clamp-2 leading-tight">{video.title}</h4>
+                      <h4 className="text-[10px] font-bold text-neutral-900 dark:text-neutral-100 line-clamp-2 leading-tight">{video.title}</h4>
                       <div className="flex items-center gap-1.5 opacity-50">
-                        <span className="text-[8px] font-bold uppercase tracking-wider">{new Date(video.pubDate).toLocaleDateString()}</span>
+                        <span className="text-[8px] font-bold uppercase tracking-wider dark:text-neutral-400">{new Date(video.pubDate).toLocaleDateString()}</span>
                       </div>
                     </div>
                   </motion.div>
@@ -390,18 +390,18 @@ function MessageBubble({
     )}>
       {msg.role === "assistant" && (
         <div className="flex items-center gap-2 mb-1.5 px-0.5">
-          <div className="w-5 h-5 rounded-full bg-black flex items-center justify-center">
+          <div className="w-5 h-5 rounded-full bg-black dark:bg-primary flex items-center justify-center">
             <Bot className="w-3 h-3 text-white" />
           </div>
-          <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">AI Copilot</span>
+          <span className="text-[10px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-widest">AI Copilot</span>
         </div>
       )}
 
       <div className={cn(
         "rounded-md text-sm leading-relaxed",
         msg.role === "user" ? "bg-black text-white px-3 py-2 rounded-tr-none" : 
-        msg.role === "system" ? "bg-red-50 text-red-600 px-3 py-3 w-full border border-red-100/50 shadow-sm" : 
-        "bg-transparent text-black w-full"
+        msg.role === "system" ? "bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 px-3 py-3 w-full border border-red-100/50 dark:border-red-900/30 shadow-sm" : 
+        "bg-transparent text-black dark:text-neutral-100 w-full"
       )}>
         {msg.imageUrls && msg.imageUrls.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2">
@@ -417,12 +417,12 @@ function MessageBubble({
           </div>
         )}
         <div className={cn(
-          "prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-neutral-800 prose-pre:text-white",
-          msg.role === "assistant" && "text-neutral-800",
+          "prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-neutral-800 dark:prose-pre:bg-neutral-950 prose-pre:text-white dark:prose-invert",
+          msg.role === "assistant" && "text-neutral-800 dark:text-neutral-100",
           msg.isSilent && "opacity-70 italic"
         )}>
           {msg.isSilent && (
-            <div className="flex items-center gap-1.5 mb-1 text-[10px] uppercase tracking-wider font-bold text-neutral-400 not-italic">
+            <div className="flex items-center gap-1.5 mb-1 text-[10px] uppercase tracking-wider font-bold text-neutral-400 dark:text-neutral-500 not-italic">
               <Mic className="w-3 h-3" />
               Voice Action
             </div>
@@ -437,17 +437,17 @@ function MessageBubble({
             {msg.linkMetadata.map((meta, idx) => (
               <div 
                 key={idx}
-                className="flex flex-col gap-2 p-3 my-2 bg-neutral-50 border border-neutral-200 rounded-lg hover:bg-neutral-100 transition-colors group no-underline max-w-full overflow-hidden"
+                className="flex flex-col gap-2 p-3 my-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors group no-underline max-w-full overflow-hidden"
               >
                 <div className="flex gap-3 items-start min-w-0">
                   {meta.image && (
                     <img src={meta.image} alt="" className="w-16 h-16 rounded object-cover shrink-0" referrerPolicy="no-referrer" />
                   )}
                   <div className="flex flex-col gap-0.5 overflow-hidden min-w-0 flex-1">
-                    <span className="text-sm font-semibold text-neutral-900 truncate group-hover:text-black block">{meta.title}</span>
-                    {meta.description && <p className="text-xs text-neutral-500 line-clamp-2 leading-relaxed">{meta.description}</p>}
+                    <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate group-hover:text-black dark:group-hover:text-white block">{meta.title}</span>
+                    {meta.description && <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2 leading-relaxed">{meta.description}</p>}
                     <div className="flex items-center gap-1.5 mt-1 overflow-hidden min-w-0">
-                       <span className="text-[10px] text-neutral-400 truncate">{new URL(meta.url).hostname}</span>
+                       <span className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate">{new URL(meta.url).hostname}</span>
                     </div>
                   </div>
                 </div>
@@ -464,15 +464,15 @@ function MessageBubble({
           <div className="mt-4 flex flex-col gap-3">
              {/* Sources */}
              {links.length > 0 && (
-               <div className="flex flex-wrap gap-2 pt-2 border-t border-neutral-100">
-                  <span className="text-[10px] font-bold text-neutral-300 mr-1 uppercase">Sources</span>
+               <div className="flex flex-wrap gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+                  <span className="text-[10px] font-bold text-neutral-300 dark:text-neutral-600 mr-1 uppercase">Sources</span>
                   {links.map((link, idx) => (
                     <a 
                       key={idx}
                       href={link} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-2 py-1 bg-neutral-50 hover:bg-neutral-100 border border-neutral-100 rounded-full text-[10px] text-neutral-500 transition-colors group/link"
+                      className="flex items-center gap-1.5 px-2 py-1 bg-neutral-50 dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-neutral-100 dark:border-neutral-800 rounded-full text-[10px] text-neutral-500 dark:text-neutral-400 transition-colors group/link"
                     >
                       <img 
                         src={`https://www.google.com/s2/favicons?domain=${new URL(link).hostname}&sz=32`} 
@@ -2434,7 +2434,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               <div className="flex flex-col h-full bg-white dark:bg-neutral-900">
                 <div className="flex items-center justify-between px-6 py-5 border-b border-neutral-100 dark:border-neutral-800">
                   <div className="flex items-center gap-3">
-                    <History className="w-5 h-5 text-neutral-400" />
+                    <History className="w-5 h-5 text-neutral-400 dark:text-neutral-500" />
                     <h3 className="font-bold text-neutral-900 dark:text-white leading-none">History</h3>
                   </div>
                   <button 
@@ -2447,7 +2447,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                 
                 <div className="flex-1 overflow-y-auto px-4 py-2 custom-scrollbar">
                   {sessions.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-neutral-400 gap-3 grayscale opacity-60">
+                    <div className="h-full flex flex-col items-center justify-center text-neutral-400 dark:text-neutral-600 gap-3 grayscale opacity-60">
                       <MessageSquare className="w-10 h-10" />
                       <p className="text-sm font-medium">No conversations yet</p>
                     </div>
@@ -2514,29 +2514,29 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="w-full bg-white border-b border-neutral-100 shadow-xl z-20 overflow-hidden relative"
+            className="w-full bg-white dark:bg-black border-b border-neutral-100 dark:border-neutral-800 shadow-xl z-20 overflow-hidden relative"
           >
-            <div className="flex items-center justify-between px-4 py-2 bg-neutral-50 border-b border-neutral-100/50">
+            <div className="flex items-center justify-between px-4 py-2 bg-neutral-50 dark:bg-neutral-900 border-b border-neutral-100/50 dark:border-neutral-800/50">
                <div className="flex items-center gap-2.5">
                  <div className="p-1 bg-red-600/10 rounded-lg">
                    <Youtube className="w-4 h-4 text-red-600" />
                  </div>
                  <div className="flex flex-col">
-                   <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-900">Reference Player</span>
+                   <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-900 dark:text-white">Reference Player</span>
                    <span className="text-[9px] font-medium text-neutral-400">Time: {Math.floor(activeVideoPlayer.timeSeconds / 60)}:{(activeVideoPlayer.timeSeconds % 60).toString().padStart(2, '0')}</span>
                  </div>
                </div>
                <div className="flex items-center gap-2">
                  <button 
                   onClick={() => setActiveVideoPlayer(prev => prev ? { ...prev, isMinimized: true } : null)}
-                  className="p-1.5 hover:bg-neutral-200 rounded-full transition-colors active:scale-95 text-neutral-400 hover:text-neutral-900"
+                  className="p-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-full transition-colors active:scale-95 text-neutral-400 dark:text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
                   title="Minimize"
                  >
                    <Minimize2 className="w-4 h-4" />
                  </button>
                  <button 
                    onClick={() => setActiveVideoPlayer(null)} 
-                   className="p-1.5 hover:bg-red-50 rounded-full transition-colors active:scale-95 text-neutral-400 hover:text-red-600"
+                   className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors active:scale-95 text-neutral-400 dark:text-neutral-500 hover:text-red-600 dark:hover:text-red-400"
                    title="Close"
                  >
                    <X className="w-4 h-4" />
@@ -2560,11 +2560,11 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                               key={i}
                               animate={{ height: [8, 16, 8] }}
                               transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.15 }}
-                              className="w-1 bg-red-500 rounded-full"
+                              className="w-1 bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)] rounded-full"
                             />
                           ))}
                        </div>
-                       <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white animate-pulse">Analyzing Frames</span>
+                       <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white animate-pulse drop-shadow-lg">Analyzing Frames</span>
                     </div>
                  </div>
               )}
@@ -2587,14 +2587,14 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             activeVideoPlayer && "md:p-8 p-4 md:space-y-6 space-y-3"
           )}>
             {!activeVideoPlayer && (
-              <div className="w-20 h-20 bg-neutral-50 border border-neutral-100 rounded-3xl flex items-center justify-center animate-pulse">
-                <BrainCircuit className="w-10 h-10 text-neutral-900" />
+              <div className="w-20 h-20 bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-3xl flex items-center justify-center animate-pulse">
+                <BrainCircuit className="w-10 h-10 text-neutral-900 dark:text-white" />
               </div>
             )}
             <div>
-              <h3 className={cn("text-xl font-bold text-neutral-900 mb-2 mt-[-50px]", activeVideoPlayer && "mt-0 text-lg")}>How can I help you?</h3>
+              <h3 className={cn("text-xl font-bold text-neutral-900 dark:text-white mb-2 mt-[-50px]", activeVideoPlayer && "mt-0 text-lg")}>How can I help you?</h3>
               {!activeVideoPlayer && (
-                <p className="text-sm text-neutral-500 leading-relaxed font-medium">
+                <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed font-medium">
                   I can help you build brainstorms, scripts, captions, organize folders or just brainstorm ideas for your next big thing.
                 </p>
               )}
@@ -2602,15 +2602,15 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             <div className={cn("grid gap-2 w-full", activeVideoPlayer && "md:grid hidden")}>
               {isSuggestionsLoading ? (
                 <div className="flex items-center justify-center gap-2 py-4">
-                  <Loader2 className="w-3 h-3 animate-spin text-neutral-400" />
-                  <span className="text-xs text-neutral-400 font-medium">Getting suggestions...</span>
+                  <Loader2 className="w-3 h-3 animate-spin text-neutral-400 dark:text-neutral-500" />
+                  <span className="text-xs text-neutral-400 dark:text-neutral-500 font-medium">Getting suggestions...</span>
                 </div>
               ) : (
                 dynamicSuggestions.map((suggestion, i) => (
                   <button 
                     key={i}
                     onClick={() => setInput(suggestion)}
-                    className="px-4 py-3 bg-neutral-50 border border-neutral-100 rounded-2xl text-xs font-semibold text-neutral-600 hover:bg-neutral-100 hover:border-neutral-200 transition-all text-left whitespace-nowrap overflow-hidden text-ellipsis hover:translate-y-[-1px] active:translate-y-0"
+                    className="px-4 py-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-2xl text-xs font-semibold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:border-neutral-200 dark:hover:border-neutral-700 transition-all text-left whitespace-nowrap overflow-hidden text-ellipsis hover:translate-y-[-1px] active:translate-y-0"
                   >
                     {suggestion}
                   </button>
@@ -2736,7 +2736,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
 
       {/* Input Area */}
       <div className={cn(
-        "p-4 bg-white/80 backdrop-blur-xl border-t border-neutral-100 shrink-0 transition-all",
+        "p-4 bg-white/80 dark:bg-black/80 backdrop-blur-xl border-t border-neutral-100 dark:border-neutral-800 shrink-0 transition-all",
         activeVideoPlayer && "md:p-4 p-2" // Minimal padding on mobile when player is active
       )}>
         {/* Attached Images Preview */}
@@ -2744,10 +2744,10 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           <div className="flex gap-2 mb-3 overflow-x-auto pb-2">
             {attachedImages.map((img, idx) => (
               <div key={idx} className="relative shrink-0">
-                <img src={img.url} alt="Preview" className="w-16 h-16 object-cover rounded-xl border border-neutral-200" />
+                <img src={img.url} alt="Preview" className="w-16 h-16 object-cover rounded-xl border border-neutral-200 dark:border-neutral-800" />
                 <button 
                   onClick={() => removeImage(idx)}
-                  className="absolute -top-2 -right-2 w-5 h-5 bg-black text-white rounded-full flex items-center justify-center shadow-sm"
+                  className="absolute -top-2 -right-2 w-5 h-5 bg-black dark:bg-primary text-white rounded-full flex items-center justify-center shadow-sm"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -2757,7 +2757,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
         )}
 
         <div className={cn(
-          "flex items-end gap-2 bg-neutral-100 p-1.5 rounded-2xl border border-neutral-100 focus-within:border-neutral-200 focus-within:bg-neutral-50 transition-all relative",
+          "flex items-end gap-2 bg-neutral-100 dark:bg-neutral-900 p-1.5 rounded-2xl border border-neutral-100 dark:border-neutral-800 focus-within:border-neutral-200 dark:focus-within:border-neutral-700 focus-within:bg-neutral-50 dark:focus-within:bg-neutral-800/50 transition-all relative",
           activeVideoPlayer && "rounded-xl" // Slightly sharper corners for minimal look
         )}>
           <input 
@@ -2771,19 +2771,19 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           {!activeVideoPlayer && ( // Hide attachment button on mobile when player is active
             <button 
               onClick={() => fileInputRef.current?.click()}
-              className="p-2.5 text-neutral-400 hover:text-black transition-all rounded-xl hover:bg-white shrink-0 active:scale-95"
+              className="p-2.5 text-neutral-400 hover:text-black dark:hover:text-white transition-all rounded-xl hover:bg-white dark:hover:bg-neutral-800 shrink-0 active:scale-95"
             >
               <ImageIcon className="w-5 h-5" />
             </button>
           )}
           
           {linkPreview && (
-              <div className="absolute bottom-full mb-2 inset-x-0 mx-2 bg-white border border-neutral-100 rounded-xl overflow-hidden shadow-xl p-3 flex gap-3">
+              <div className="absolute bottom-full mb-2 inset-x-0 mx-2 bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-xl overflow-hidden shadow-xl p-3 flex gap-3">
                  {linkPreview.image && <img src={linkPreview.image} className="w-16 h-16 rounded object-cover shrink-0" />}
                  <div className="min-w-0 flex flex-col gap-0.5 justify-center">
-                    <div className="text-sm font-semibold truncate text-neutral-900">{linkPreview.title}</div>
-                    <div className="text-xs text-neutral-500 line-clamp-2 leading-relaxed">{linkPreview.description}</div>
-                    <div className="text-[10px] text-neutral-400 truncate">{linkPreview.url}</div>
+                    <div className="text-sm font-semibold truncate text-neutral-900 dark:text-white">{linkPreview.title}</div>
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2 leading-relaxed">{linkPreview.description}</div>
+                    <div className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate">{linkPreview.url}</div>
                  </div>
               </div>
           )}
@@ -2799,7 +2799,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             }}
             placeholder={activeVideoPlayer ? "Ask about current timestamp..." : "Ask AI anything..."}
             className={cn(
-              "flex-1 bg-transparent border-none outline-none resize-none max-h-32 py-2.5 text-sm font-semibold text-neutral-900 placeholder:text-neutral-400",
+              "flex-1 bg-transparent border-none outline-none resize-none max-h-32 py-2.5 text-sm font-semibold text-neutral-900 dark:text-white placeholder:text-neutral-400 dark:placeholder:text-neutral-600",
               activeVideoPlayer && "py-1.5"
             )}
             rows={1}
@@ -2809,7 +2809,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             <button 
               onClick={() => handleSend()}
               disabled={isGenerating}
-              className="p-2.5 bg-black text-white rounded-xl hover:scale-105 active:scale-95 transition-all disabled:opacity-30 shrink-0 shadow-lg shadow-black/10"
+              className="p-2.5 bg-black dark:bg-primary text-white rounded-xl hover:scale-105 active:scale-95 transition-all disabled:opacity-30 shrink-0 shadow-lg shadow-black/10 dark:shadow-primary/20"
             >
               <Send className="w-5 h-5" />
             </button>
@@ -2819,7 +2819,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               disabled={isConnecting}
               className={cn(
                 "p-2.5 rounded-xl transition-all shrink-0 relative overflow-hidden active:scale-95",
-                isLive ? "bg-red-500 text-white" : "bg-white text-neutral-400 border border-neutral-100 hover:text-black hover:bg-neutral-50 shadow-sm",
+                isLive ? "bg-red-500 text-white" : "bg-white dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 border border-neutral-100 dark:border-neutral-700 hover:text-black dark:hover:text-white hover:bg-neutral-50 dark:hover:bg-neutral-700 shadow-sm",
                 activeVideoPlayer && "p-1.5"
               )}
             >

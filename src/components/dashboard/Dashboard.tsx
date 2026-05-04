@@ -354,7 +354,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
               initial={{ opacity: 0, scale: 0.9, x: 20 }}
               animate={{ opacity: 1, scale: 1, x: 0 }}
               exit={{ opacity: 0, scale: 0.9, x: 20 }}
-              className="px-3 py-1.5 bg-red-600 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg flex items-center gap-2 border border-red-500"
+              className="px-3 py-1.5 bg-black dark:bg-red-600 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg flex items-center gap-2 border border-neutral-800 dark:border-red-500"
             >
               <WifiOff className="w-3 h-3" />
               Offline
@@ -365,9 +365,9 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
               initial={{ opacity: 0, scale: 0.9, y: -20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: -20 }}
-              className="px-3 py-1.5 bg-primary text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg flex items-center gap-2 border border-primary/20"
+              className="px-3 py-1.5 bg-black dark:bg-primary text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg flex items-center gap-2 border border-neutral-800 dark:border-primary/20"
             >
-              <RefreshCw className="w-3 h-3 animate-spin" />
+              <RefreshCw className="w-3 h-3 animate-spin text-primary" />
               Syncing...
             </motion.div>
           )}
@@ -495,7 +495,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
             }}
             transition={{ duration: 0.3, ease: "easeOut" }}
             className={cn(
-              "fixed bottom-4 left-4 right-4 bg-white/90 backdrop-blur-md shadow-xl rounded-2xl border border-neutral-200 p-2 flex items-center gap-2 z-50",
+              "fixed bottom-4 left-4 right-4 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-md shadow-xl rounded-2xl border border-neutral-200 dark:border-neutral-800 p-2 flex items-center gap-2 z-50",
               showBottomBar ? "pointer-events-auto" : "pointer-events-none"
             )}
           >
@@ -524,14 +524,14 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
               <Mic className={cn("w-5 h-5 relative z-10")} />
             </button>
             <div 
-              className="flex-1 px-2 text-sm font-medium text-neutral-400 cursor-text"
+              className="flex-1 px-2 text-sm font-medium text-neutral-400 dark:text-neutral-500 cursor-text"
               onClick={() => setIsCopilotOpen(true)}
             >
               What do you want?
             </div>
             <button 
               onClick={() => setIsCopilotOpen(true)} 
-              className="w-10 h-10 flex items-center justify-center text-neutral-400 hover:text-black transition-colors shrink-0"
+              className="w-10 h-10 flex items-center justify-center text-neutral-400 dark:text-neutral-500 hover:text-black dark:hover:text-white transition-colors shrink-0"
             >
               <ChevronUp className="w-5 h-5" />
             </button>
@@ -557,7 +557,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
         animate={isCopilotOpen ? { x: 0, y: 0 } : (isDesktop ? { x: "100%" } : { y: "100%" })}
         transition={{ type: "spring", damping: 25, stiffness: 200 }}
         className={cn(
-          "fixed bottom-0 left-0 right-0 h-[92vh] rounded-t-[32px] md:rounded-t-[40px] z-[90] lg:relative lg:h-full lg:w-[400px] lg:rounded-none lg:z-auto bg-white border-t lg:border-t-0 lg:border-l border-neutral-100 flex flex-col overflow-hidden",
+          "fixed bottom-0 left-0 right-0 h-[92vh] rounded-t-[32px] md:rounded-t-[40px] z-[90] lg:relative lg:h-full lg:w-[400px] lg:rounded-none lg:z-auto bg-white dark:bg-black border-t lg:border-t-0 lg:border-l border-neutral-100 dark:border-neutral-900 flex flex-col overflow-hidden",
           !isCopilotOpen && !isDesktop && "pointer-events-none"
         )}
         style={{
@@ -565,13 +565,13 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
         }}
       >
         {/* Drag Handle for Sheet */}
-        <div className="lg:hidden flex justify-center py-4 shrink-0">
-          <div className="w-12 h-1.5 bg-neutral-200 rounded-full" />
+        <div className="lg:hidden flex justify-center py-4 shrink-0 bg-white dark:bg-black">
+          <div className="w-12 h-1.5 bg-neutral-200 dark:bg-neutral-800 rounded-full" />
         </div>
         
         <div className="lg:hidden absolute top-4 right-4 z-[100]">
-          <button onClick={() => setIsCopilotOpen(false)} className="p-2 bg-neutral-100 rounded-full hover:bg-neutral-200 transition-colors">
-            <X className="w-4 h-4" />
+          <button onClick={() => setIsCopilotOpen(false)} className="p-2 bg-neutral-100 dark:bg-neutral-800 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors">
+            <X className="w-4 h-4 dark:text-white" />
           </button>
         </div>
 

@@ -295,7 +295,7 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
 
       {/* Recent Files Grid */}
       <div className="mt-8 px-4 flex flex-col gap-4">
-        <h2 className="text-xl font-bold tracking-tight">Recent Files</h2>
+        <h2 className="text-xl font-bold tracking-tight text-neutral-900 dark:text-white">Recent Files</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <AnimatePresence mode="popLayout">

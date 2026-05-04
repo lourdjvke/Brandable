@@ -78,13 +78,13 @@ const BlogImageComponent = (props: any) => {
         </div>
       ) : (
         <div 
-          className="w-full aspect-video bg-neutral-50 rounded-2xl border-2 border-dashed border-neutral-200 flex flex-col items-center justify-center cursor-pointer hover:bg-neutral-100 transition-colors"
+          className="w-full aspect-video bg-neutral-50 dark:bg-neutral-900 rounded-2xl border-2 border-dashed border-neutral-200 dark:border-neutral-800 flex flex-col items-center justify-center cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
           onClick={() => inputRef.current?.click()}
         >
-          <div className="w-12 h-12 rounded-full bg-white shadow-sm flex items-center justify-center mb-3">
-            <ImageIcon className="w-5 h-5 text-neutral-400" />
+          <div className="w-12 h-12 rounded-full bg-white dark:bg-neutral-800 shadow-sm flex items-center justify-center mb-3">
+            <ImageIcon className="w-5 h-5 text-neutral-400 dark:text-neutral-500" />
           </div>
-          <span className="text-sm text-neutral-500 font-medium">Click to add an image</span>
+          <span className="text-sm text-neutral-500 dark:text-neutral-400 font-medium">Click to add an image</span>
         </div>
       )}
       <input type="file" accept="image/*" className="hidden" ref={inputRef} onChange={handleUpload} />
@@ -149,7 +149,7 @@ const BentoGalleryComponent = (props: any) => {
          {images.map((src, i) => (
            <div key={i} 
              className={cn(
-               "relative rounded-2xl overflow-hidden bg-neutral-100 aspect-square group",
+               "relative rounded-2xl overflow-hidden bg-neutral-100 dark:bg-neutral-900 aspect-square group",
                count === 3 && i === 0 ? "col-span-2 row-span-2 aspect-auto" : "",
                count === 5 && i < 2 ? "col-span-1" : ""
              )}
@@ -182,7 +182,7 @@ const BentoGalleryComponent = (props: any) => {
        {count < 6 && (
          <button 
             onClick={addSlot} 
-            className="mt-3 flex items-center justify-center w-full py-2.5 border border-neutral-200 rounded-xl hover:bg-neutral-50 text-neutral-500 font-medium text-sm transition-colors active:scale-[0.98]"
+            className="mt-3 flex items-center justify-center w-full py-2.5 border border-neutral-200 dark:border-neutral-800 rounded-xl hover:bg-neutral-50 dark:hover:bg-neutral-900 text-neutral-500 dark:text-neutral-400 font-medium text-sm transition-colors active:scale-[0.98]"
          >
            <Plus className="w-4 h-4 mr-1.5" /> 
            Add Image Slot
@@ -272,7 +272,7 @@ export default function FileEditor({ file, onBack, profile }: FileEditorProps) {
     onUpdate: () => setHasUnsavedChanges(true),
     editorProps: {
       attributes: {
-        class: 'tiptap prose prose-neutral max-w-none w-full outline-none font-light leading-relaxed prose-img:rounded-2xl prose-img:shadow-sm prose-img:border prose-img:border-neutral-100',
+        class: 'tiptap prose prose-neutral dark:prose-invert max-w-none w-full outline-none font-light leading-relaxed prose-img:rounded-2xl prose-img:shadow-sm prose-img:border prose-img:border-neutral-100 dark:prose-img:border-neutral-800',
       },
     },
   });

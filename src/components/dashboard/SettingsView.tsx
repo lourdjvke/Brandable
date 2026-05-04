@@ -70,7 +70,7 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
             <div className="w-8 h-8 rounded-xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-600 dark:text-neutral-400">
               <Palette className="w-4 h-4" />
             </div>
-            <h2 className="font-semibold text-sm">Appearance</h2>
+            <h2 className="font-semibold text-sm dark:text-white">Appearance</h2>
           </div>
           
           <div className="grid grid-cols-3 gap-3">
