@@ -29,6 +29,17 @@
     <link rel="icon" type="image/png" href="https://cdn.dribbble.com/userupload/46470256/file/af6fd035c99fbb7985614c15d3a47d96.jpg?format=webp&resize=640x480&vertical=center" />
     <link rel="apple-touch-icon" href="https://cdn.dribbble.com/userupload/46470256/file/af6fd035c99fbb7985614c15d3a47d96.jpg?format=webp&resize=640x480&vertical=center" />
     <link rel="manifest" href="/manifest.json" />
+    <script>
+      (function() {
+        const theme = localStorage.getItem('theme') || 
+                      (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        if (theme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

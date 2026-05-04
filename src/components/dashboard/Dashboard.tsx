@@ -9,10 +9,12 @@ import VoiceAssistant from "./VoiceAssistant";
 import LinkYouTube from "./LinkYouTube";
 import { NotificationProvider } from "./NotificationSystem";
 import { motion, AnimatePresence } from "motion/react";
-import { MessageSquare, Menu, X, Mic, ChevronUp } from "lucide-react";
+import { MessageSquare, Menu, X, Mic, ChevronUp, Wifi, WifiOff, RefreshCw } from "lucide-react";
 import { cn } from "@/src/lib/utils";
 import { rtdb } from "@/src/lib/firebase";
 import { ref as dbRef, onValue, set, push, update, remove, get as dbGet, child } from "firebase/database";
+import { syncQueue } from "@/src/lib/sync";
+import { enqueueMutation, saveFiles } from "@/src/lib/db";
 
 export default function Dashboard({ profile }: { profile: UserProfile }) {
   return (
@@ -31,6 +33,8 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Sync tab with URL
   useEffect(() => {
@@ -43,6 +47,24 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
       setActiveTab("workspace");
     }
   }, [location.pathname]);
+
+  // Online/Offline Listeners
+  useEffect(() => {
+    const handleOnline = async () => {
+      setIsOnline(true);
+      setIsSyncing(true);
+      await syncQueue();
+      setIsSyncing(false);
+    };
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab as any);
@@ -231,10 +253,15 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   };
 
   const handleUpdateFile = async (id: string, updates: Partial<FileItem>) => {
-    try {
+    // Optimistic UI update
+    setFiles(files.map(f => f.id === id ? { ...f, ...updates } : f));
+    
+    if (isOnline) {
       await update(dbRef(rtdb, `files/${id}`), { ...cleanObject(updates), updatedAt: Date.now() });
-    } catch (err) {
-      console.error("Error updating file:", err);
+    } else {
+      await enqueueMutation('updateFile', { id, updates });
+      // Also update IndexedDB
+      await saveFiles(files.map(f => f.id === id ? { ...f, ...updates } : f));
     }
   };
 
@@ -318,7 +345,10 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
             <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-neutral-500">
               <Menu className="w-6 h-6" />
             </button>
-            <div className="font-bold text-sm truncate max-w-[200px]">Brandable</div>
+            <div className="font-bold text-sm truncate max-w-[200px] flex items-center gap-1">
+              Brandable
+              {isSyncing ? <RefreshCw className="w-3 h-3 animate-spin" /> : !isOnline ? <WifiOff className="w-3 h-3 text-red-500" /> : <Wifi className="w-3 h-3 text-green-500" />}
+            </div>
             <button 
               onClick={() => setIsCopilotOpen(!isCopilotOpen)}
               className="p-2 -mr-2 text-neutral-500"

@@ -3,7 +3,8 @@ import { UserProfile } from "@/src/types";
 import { db, auth } from "@/src/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
 import { signOut, updateProfile } from "firebase/auth";
-import { User, LogOut, Key, BrainCircuit, Save, Loader2, Shuffle, DownloadCloud, CheckCircle2 } from "lucide-react";
+import { User, LogOut, Key, BrainCircuit, Save, Loader2, Shuffle, DownloadCloud, CheckCircle2, Palette, Moon, Sun, Laptop } from "lucide-react";
+import { useTheme } from "@/src/hooks/useTheme";
 import { motion } from "motion/react";
 import { cn } from "@/src/lib/utils";
 import { usePWA } from "@/src/hooks/usePWA";
@@ -18,6 +19,7 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const { needRefresh, offlineReady, updateServiceWorker } = usePWA();
+  const { theme, setTheme } = useTheme();
 
   const handleSave = async () => {
     setSaving(true);
@@ -62,6 +64,38 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
       </header>
 
       <div className="px-6 flex flex-col gap-6 max-w-2xl mx-auto">
+        {/* Appearance Section */}
+        <section className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100 flex flex-col gap-4">
+          <div className="flex items-center gap-3 border-b border-neutral-50 pb-3">
+            <div className="w-8 h-8 rounded-xl bg-neutral-100 flex items-center justify-center text-neutral-600">
+              <Palette className="w-4 h-4" />
+            </div>
+            <h2 className="font-semibold text-sm">Appearance</h2>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { id: 'light', icon: Sun, label: 'Light' },
+              { id: 'dark', icon: Moon, label: 'Dark' },
+              { id: 'system', icon: Laptop, label: 'System' }
+            ].map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTheme(t.id as any)}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-2 p-3 rounded-xl border transition-all",
+                  theme === t.id 
+                    ? "border-black bg-neutral-50" 
+                    : "border-neutral-100 hover:border-neutral-200"
+                )}
+              >
+                <t.icon className="w-5 h-5" />
+                <span className="text-xs font-medium">{t.label}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
         {/* Profile Section */}
         <section className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100 flex flex-col gap-4">
           <div className="flex items-center gap-3 border-b border-neutral-50 pb-3">
