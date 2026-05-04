@@ -57,17 +57,17 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
     <motion.div 
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="min-h-full bg-[#f8f9fa] pb-40"
+      className="min-h-full bg-[#f8f9fa] dark:bg-black pb-40"
     >
       <header className="px-6 pt-12 pb-4">
-        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+        <h1 className="text-2xl font-bold tracking-tight dark:text-white">Settings</h1>
       </header>
 
       <div className="px-6 flex flex-col gap-6 max-w-2xl mx-auto">
         {/* Appearance Section */}
-        <section className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100 flex flex-col gap-4">
-          <div className="flex items-center gap-3 border-b border-neutral-50 pb-3">
-            <div className="w-8 h-8 rounded-xl bg-neutral-100 flex items-center justify-center text-neutral-600">
+        <section className="bg-white dark:bg-neutral-900 rounded-2xl p-5 shadow-sm border border-neutral-100 dark:border-neutral-800 flex flex-col gap-4">
+          <div className="flex items-center gap-3 border-b border-neutral-50 dark:border-neutral-800 pb-3">
+            <div className="w-8 h-8 rounded-xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-600 dark:text-neutral-400">
               <Palette className="w-4 h-4" />
             </div>
             <h2 className="font-semibold text-sm">Appearance</h2>
@@ -85,8 +85,8 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
                 className={cn(
                   "flex flex-col items-center justify-center gap-2 p-3 rounded-xl border transition-all",
                   theme === t.id 
-                    ? "border-black bg-neutral-50" 
-                    : "border-neutral-100 hover:border-neutral-200"
+                    ? "border-primary bg-primary/5 dark:bg-primary/10 text-primary" 
+                    : "border-neutral-100 dark:border-neutral-800 hover:border-neutral-200 dark:hover:border-neutral-700 text-neutral-500"
                 )}
               >
                 <t.icon className="w-5 h-5" />
@@ -97,32 +97,32 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
         </section>
 
         {/* Profile Section */}
-        <section className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100 flex flex-col gap-4">
-          <div className="flex items-center gap-3 border-b border-neutral-50 pb-3">
-            <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+        <section className="bg-white dark:bg-neutral-900 rounded-2xl p-5 shadow-sm border border-neutral-100 dark:border-neutral-800 flex flex-col gap-4">
+          <div className="flex items-center gap-3 border-b border-neutral-50 dark:border-neutral-800 pb-3">
+            <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
               <User className="w-4 h-4" />
             </div>
-            <h2 className="font-semibold text-sm">Profile</h2>
+            <h2 className="font-semibold text-sm dark:text-white">Profile</h2>
           </div>
           
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-neutral-500">Display Name</label>
+              <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400">Display Name</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 bg-neutral-50 rounded-xl text-sm outline-none focus:ring-1 focus:ring-black transition-all"
+                className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-transparent focus:border-primary rounded-xl text-sm outline-none transition-all dark:text-white"
                 placeholder="Your name"
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-neutral-500">Photo URL</label>
+              <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400">Photo URL</label>
               <input
                 type="text"
                 value={photoURL}
                 onChange={(e) => setPhotoURL(e.target.value)}
-                className="w-full px-3 py-2 bg-neutral-50 rounded-xl text-sm outline-none focus:ring-1 focus:ring-black transition-all"
+                className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-transparent focus:border-primary rounded-xl text-sm outline-none transition-all dark:text-white"
                 placeholder="https://example.com/photo.jpg"
               />
             </div>
@@ -130,37 +130,37 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
         </section>
 
         {/* AI Copilot Section */}
-        <section className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100 flex flex-col gap-4">
-          <div className="flex items-center gap-3 border-b border-neutral-50 pb-3">
-            <div className="w-8 h-8 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600">
+        <section className="bg-white dark:bg-neutral-900 rounded-2xl p-5 shadow-sm border border-neutral-100 dark:border-neutral-800 flex flex-col gap-4">
+          <div className="flex items-center gap-3 border-b border-neutral-50 dark:border-neutral-800 pb-3">
+            <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
               <BrainCircuit className="w-4 h-4" />
             </div>
-            <h2 className="font-semibold text-sm">AI Copilot</h2>
+            <h2 className="font-semibold text-sm dark:text-white">AI Copilot</h2>
           </div>
           
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-neutral-500 flex items-center gap-2">
+              <label className="text-xs font-medium text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
                 <Key className="w-3 h-3" /> Gemini API Key
               </label>
               <input
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                className="w-full px-3 py-2 bg-neutral-50 rounded-xl text-sm outline-none focus:ring-1 focus:ring-black transition-all font-mono"
+                className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-transparent focus:border-primary rounded-xl text-sm outline-none transition-all font-mono dark:text-white"
                 placeholder={envKey ? "Using system key (AI Studio managed)" : "AIzaSy..."}
               />
               <p className="text-[10px] text-neutral-400">
                 Stored locally in your browser. Check your quota at{" "}
-                <a href="https://ai.google.dev/gemini-api/docs/rate-limits" target="_blank" className="text-blue-500 hover:underline">ai.google.dev</a>
+                <a href="https://ai.google.dev/gemini-api/docs/rate-limits" target="_blank" className="text-primary hover:underline">ai.google.dev</a>
               </p>
             </div>
 
-            <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl">
+            <div className="flex items-center justify-between p-3 bg-neutral-50 dark:bg-neutral-800 rounded-xl">
               <div className="flex items-center gap-3">
                 <Shuffle className="w-4 h-4 text-neutral-500" />
                 <div className="flex flex-col">
-                  <span className="text-sm font-medium">Randomize Model</span>
+                  <span className="text-sm font-medium dark:text-white">Randomize Model</span>
                   <span className="text-[10px] text-neutral-400">Switch between Flash, Pro, and Thinking models</span>
                 </div>
               </div>
@@ -168,7 +168,7 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
                 onClick={() => setRandomModel(!randomModel)}
                 className={cn(
                   "w-10 h-6 rounded-full transition-colors relative",
-                  randomModel ? "bg-black" : "bg-neutral-200"
+                  randomModel ? "bg-primary" : "bg-neutral-200 dark:bg-neutral-700"
                 )}
               >
                 <motion.div 
@@ -184,23 +184,23 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
         </section>
 
         {/* System / App Update Section */}
-        <section className="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100 flex flex-col gap-4">
-          <div className="flex items-center gap-3 border-b border-neutral-50 pb-3">
-            <div className="w-8 h-8 rounded-xl bg-green-50 flex items-center justify-center text-green-600">
+        <section className="bg-white dark:bg-neutral-900 rounded-2xl p-5 shadow-sm border border-neutral-100 dark:border-neutral-800 flex flex-col gap-4">
+          <div className="flex items-center gap-3 border-b border-neutral-50 dark:border-neutral-800 pb-3">
+            <div className="w-8 h-8 rounded-xl bg-green-50 dark:bg-green-900/20 flex items-center justify-center text-green-600">
               <DownloadCloud className="w-4 h-4" />
             </div>
-            <h2 className="font-semibold text-sm">App Updates & Offline Status</h2>
+            <h2 className="font-semibold text-sm dark:text-white">App Updates & Offline Status</h2>
           </div>
           
           <div className="flex flex-col gap-4">
             <div className="flex flex-col">
                <div className="flex items-center gap-2 mb-2">
                  {offlineReady ? (
-                   <span className="flex items-center text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                   <span className="flex items-center text-xs font-medium text-green-600 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-full">
                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> App ready for offline use
                    </span>
                  ) : (
-                   <span className="flex items-center text-xs font-medium text-amber-500 bg-amber-50 px-2 py-1 rounded-full">
+                   <span className="flex items-center text-xs font-medium text-amber-500 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded-full">
                      <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Caching resources for offline access...
                    </span>
                  )}
@@ -211,19 +211,19 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
             </div>
 
             {needRefresh ? (
-              <div className="p-4 rounded-xl bg-blue-50 border border-blue-100 flex flex-col gap-3">
-                <span className="text-sm font-medium text-blue-900">A new version is available!</span>
-                <p className="text-xs text-blue-700">Click below to install the update and reload the application.</p>
+              <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 flex flex-col gap-3">
+                <span className="text-sm font-medium text-primary">A new version is available!</span>
+                <p className="text-xs text-primary/80">Click below to install the update and reload the application.</p>
                 <button
                   onClick={() => updateServiceWorker(true)}
-                  className="bg-blue-600 text-white text-sm font-medium py-2 px-4 rounded-xl shadow-sm hover:bg-blue-700 transition"
+                  className="bg-primary text-white text-sm font-medium py-2 px-4 rounded-xl shadow-sm hover:opacity-90 transition"
                 >
                   Install Update & Reload
                 </button>
               </div>
             ) : (
-              <div className="p-4 rounded-xl bg-neutral-50 flex flex-col items-center justify-center gap-2">
-                <span className="text-sm font-medium text-neutral-600">You're on the latest version</span>
+              <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-800 flex flex-col items-center justify-center gap-2">
+                <span className="text-sm font-medium text-neutral-600 dark:text-neutral-400">You're on the latest version</span>
                 <button
                   onClick={() => {
                      // Check for update manually
@@ -235,7 +235,7 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
                        });
                      }
                   }}
-                  className="text-xs font-medium text-neutral-500 hover:text-black hover:underline"
+                  className="text-xs font-medium text-neutral-500 hover:text-primary hover:underline"
                 >
                   Force check for updates
                 </button>
@@ -249,7 +249,7 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
           <button
             onClick={handleSave}
             disabled={saving}
-            className="w-full py-3 bg-black text-white rounded-xl text-sm font-medium hover:scale-[1.02] active:scale-[0.98] transition-transform flex items-center justify-center gap-2 disabled:opacity-50"
+            className="w-full py-3 bg-primary text-white rounded-xl text-sm font-medium hover:scale-[1.02] active:scale-[0.98] transition-transform flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Save Changes
@@ -263,7 +263,7 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
 
           <button
             onClick={handleLogout}
-            className="w-full py-3 bg-red-50 text-red-600 rounded-xl text-sm font-medium hover:bg-red-100 transition-colors flex items-center justify-center gap-2 mt-4"
+            className="w-full py-3 bg-red-50 dark:bg-red-900/10 text-red-600 rounded-xl text-sm font-medium hover:bg-red-100 dark:hover:bg-red-900/20 transition-colors flex items-center justify-center gap-2 mt-4"
           >
             <LogOut className="w-4 h-4" />
             Sign Out

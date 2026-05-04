@@ -87,20 +87,20 @@ function NotificationCard({ notification: n, onClose }: { notification: Notifica
   const iconMap = {
     success: <CheckCircle2 className="w-5 h-5 text-green-500" />,
     error: <AlertCircle className="w-5 h-5 text-red-500" />,
-    info: <Info className="w-5 h-5 text-blue-500" />,
-    task: <Bell className="w-5 h-5 text-indigo-500" />,
+    info: <Info className="w-5 h-5 text-primary" />,
+    task: <Bell className="w-5 h-5 text-primary" />,
   };
 
   const gradientMap = {
     success: "from-green-50/50 to-transparent",
     error: "from-red-50/50 to-transparent",
-    info: "from-blue-50/50 to-transparent",
-    task: "from-indigo-50/50 to-transparent",
+    info: "from-primary/10 to-transparent",
+    task: "from-primary/10 to-transparent",
   };
 
   return (
     <div className={cn(
-      "bg-white/80 backdrop-blur-xl border border-neutral-200/50 rounded-2xl shadow-xl overflow-hidden relative group",
+      "bg-white/80 dark:bg-neutral-900/90 backdrop-blur-xl border border-neutral-200/50 dark:border-neutral-800 rounded-2xl shadow-xl overflow-hidden relative group",
       "p-4 flex gap-4 items-start"
     )}>
       {/* Stylized background glow */}
@@ -110,19 +110,19 @@ function NotificationCard({ notification: n, onClose }: { notification: Notifica
       )} />
       
       <div className="relative z-10 shrink-0 mt-0.5">
-        <div className="w-10 h-10 rounded-xl bg-white shadow-sm border border-neutral-100 flex items-center justify-center">
+        <div className="w-10 h-10 rounded-xl bg-white dark:bg-neutral-800 shadow-sm border border-neutral-100 dark:border-neutral-700 flex items-center justify-center">
           {iconMap[n.type]}
         </div>
       </div>
 
       <div className="relative z-10 flex-1 min-w-0">
-        <h4 className="font-bold text-sm text-neutral-900 truncate">{n.title}</h4>
-        <p className="text-xs text-neutral-500 mt-0.5 leading-relaxed">{n.message}</p>
+        <h4 className="font-bold text-sm text-neutral-900 dark:text-white truncate">{n.title}</h4>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed">{n.message}</p>
       </div>
 
       <button
         onClick={onClose}
-        className="relative z-10 p-1 text-neutral-400 hover:text-neutral-900 transition-colors"
+        className="relative z-10 p-1 text-neutral-400 hover:text-neutral-900 dark:hover:text-white transition-colors"
       >
         <X className="w-4 h-4" />
       </button>
@@ -136,7 +136,7 @@ function NotificationCard({ notification: n, onClose }: { notification: Notifica
           "absolute bottom-0 left-0 right-0 h-0.5 origin-left",
           n.type === 'success' ? 'bg-green-500' : 
           n.type === 'error' ? 'bg-red-500' : 
-          n.type === 'info' ? 'bg-blue-500' : 'bg-indigo-500'
+          n.type === 'info' ? 'bg-primary' : 'bg-primary'
         )}
       />
     </div>

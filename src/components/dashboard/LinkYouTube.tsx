@@ -191,8 +191,8 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
 
   if (loadingInitial) {
     return (
-      <div className="h-full flex flex-col items-center justify-center space-y-4 bg-[#f8f9fa]">
-        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+      <div className="h-full flex flex-col items-center justify-center space-y-4 bg-[#f8f9fa] dark:bg-black">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading Channel</p>
       </div>
     );
@@ -201,32 +201,32 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
   // Dashboard View for already linked channels
   if (channelData && step !== 3) {
     return (
-      <div className="h-full overflow-y-auto bg-[#f8f9fa] custom-scrollbar relative">
+      <div className="h-full overflow-y-auto bg-[#f8f9fa] dark:bg-black custom-scrollbar relative">
         <div className="max-w-6xl w-full mx-auto p-4 md:p-8 pb-32">
           
-          <div className="relative w-full rounded-3xl overflow-hidden bg-white mb-8 border border-slate-200">
+          <div className="relative w-full rounded-3xl overflow-hidden bg-white dark:bg-neutral-900 mb-8 border border-slate-200 dark:border-neutral-800">
             <div 
-              className="w-full h-32 md:h-56 bg-cover bg-center border-b border-slate-100" 
+              className="w-full h-32 md:h-56 bg-cover bg-center border-b border-slate-100 dark:border-neutral-800" 
               style={{ backgroundImage: `url(${channelData.banner})`, backgroundColor: '#e2e8f0' }}
             />
-            <div className="absolute top-0 left-0 right-0 h-32 md:h-56 bg-gradient-to-b from-transparent to-white/90 mix-blend-overlay" />
+            <div className="absolute top-0 left-0 right-0 h-32 md:h-56 bg-gradient-to-b from-transparent to-white/90 dark:to-neutral-900/90 mix-blend-overlay" />
             <div className="relative p-6 flex flex-col md:flex-row items-center md:items-end gap-4 md:gap-6 mt-[-50px] md:mt-[-80px] text-center md:text-left">
               <img 
                 src={channelData.avatar} 
-                className="w-24 h-24 md:w-40 md:h-40 rounded-full border-4 border-white bg-slate-100 object-cover shadow-sm"
+                className="w-24 h-24 md:w-40 md:h-40 rounded-full border-4 border-white dark:border-neutral-800 bg-slate-100 dark:bg-neutral-800 object-cover shadow-sm"
               />
               <div className="pb-2 md:pb-4 flex-1">
                 <div className="flex flex-col md:flex-row items-center md:items-baseline gap-2 md:gap-3">
-                  <h2 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tight truncate">{channelData.name}</h2>
-                  <span className="bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-blue-100">
+                  <h2 className="text-2xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight truncate">{channelData.name}</h2>
+                  <span className="bg-primary/10 text-primary px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-primary/20">
                     {channelData.subCount}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-2 line-clamp-2 max-w-2xl font-medium">{channelData.desc}</p>
+                <p className="text-xs text-slate-500 dark:text-neutral-400 mt-2 line-clamp-2 max-w-2xl font-medium">{channelData.desc}</p>
                 <div className="flex gap-4 mt-3 justify-center md:justify-start">
                   <div className="flex flex-col">
                     <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide">Latest Volume</span>
-                    <span className="text-slate-900 font-bold text-sm tracking-tight">{videos.length} Uploads</span>
+                    <span className="text-slate-900 dark:text-white font-bold text-sm tracking-tight">{videos.length} Uploads</span>
                   </div>
                 </div>
               </div>
@@ -238,30 +238,30 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
               <div 
                 key={video.id}
                 onClick={() => setActiveVideo(video.id)}
-                className="bg-white rounded-[24px] border border-slate-200 hover:border-blue-500/30 transition-all overflow-hidden flex flex-col group cursor-pointer"
+                className="bg-white dark:bg-neutral-900 rounded-[24px] border border-slate-200 dark:border-neutral-800 hover:border-primary/30 transition-all overflow-hidden flex flex-col group cursor-pointer"
               >
-                <div className="relative aspect-video bg-slate-100">
+                <div className="relative aspect-video bg-slate-100 dark:bg-neutral-800">
                   <img src={video.thumbnail} className="w-full h-full object-cover group-hover:scale-105 transition-all duration-700" referrerPolicy="no-referrer" />
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/10">
-                    <div className="bg-white/90 p-4 rounded-full backdrop-blur-sm transform scale-75 group-hover:scale-100 transition-transform">
-                      <Youtube className="w-6 h-6 text-blue-600" />
+                    <div className="bg-white/90 dark:bg-neutral-800/90 p-4 rounded-full backdrop-blur-sm transform scale-75 group-hover:scale-100 transition-transform">
+                      <Youtube className="w-6 h-6 text-primary" />
                     </div>
                   </div>
-                  <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md px-2 py-1 rounded-lg border border-slate-100 flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                    <span className="text-[10px] font-bold text-slate-900 uppercase tracking-tighter">{formatViews(video.views)} views</span>
+                  <div className="absolute top-3 right-3 bg-white/90 dark:bg-neutral-800/90 backdrop-blur-md px-2 py-1 rounded-lg border border-slate-100 dark:border-neutral-700 flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    <span className="text-[10px] font-bold text-slate-900 dark:text-white uppercase tracking-tighter">{formatViews(video.views)} views</span>
                   </div>
                 </div>
                 <div className="p-4 flex-1 flex flex-col justify-between space-y-4">
                   <div>
-                    <h3 className="font-bold text-slate-900 text-sm line-clamp-2 leading-tight group-hover:text-blue-600 transition-colors tracking-tight">{video.title}</h3>
+                    <h3 className="font-bold text-slate-900 dark:text-white text-sm line-clamp-2 leading-tight group-hover:text-primary transition-colors tracking-tight">{video.title}</h3>
                     <div className="flex items-center gap-2 mt-2">
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{new Date(video.pubDate).toLocaleDateString()}</p>
                     </div>
                   </div>
                   <button 
                     onClick={(e) => { e.stopPropagation(); handleCopy(video.link); }} 
-                    className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 text-[10px] font-bold uppercase py-2.5 rounded-xl border border-slate-200 transition-all flex items-center justify-center gap-1.5"
+                    className="w-full bg-slate-50 dark:bg-neutral-800 hover:bg-slate-100 dark:hover:bg-neutral-700 text-slate-700 dark:text-neutral-300 text-[10px] font-bold uppercase py-2.5 rounded-xl border border-slate-200 dark:border-neutral-700 transition-all flex items-center justify-center gap-1.5"
                   >
                     {copiedLink === video.link ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
                     {copiedLink === video.link ? "Copied!" : "Copy URL"}
@@ -276,7 +276,7 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
         <button 
           onClick={() => fetchAndSave(channelData.url, channelData.tag, false)}
           disabled={isFetching}
-          className="fixed bottom-6 right-6 md:bottom-8 md:right-8 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-600 px-4 py-2 rounded-full text-[10px] font-medium tracking-wide flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50 z-50"
+          className="fixed bottom-6 right-6 md:bottom-8 md:right-8 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary px-4 py-2 rounded-full text-[10px] font-medium tracking-wide flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50 z-50"
         >
           {isFetching ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
           {isFetching ? "updating..." : "get latest"}
@@ -318,7 +318,7 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
 
   // Onboarding View
   return (
-    <div className="h-full bg-[#f8f9fa] flex flex-col p-6 lg:p-12 overflow-y-auto">
+    <div className="h-full bg-[#f8f9fa] dark:bg-black flex flex-col p-6 lg:p-12 overflow-y-auto">
       <div className="max-w-xl mx-auto w-full flex flex-col h-full min-h-[500px]">
         <div className="flex-1">
           <AnimatePresence mode="wait">
@@ -332,14 +332,14 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
                 className="space-y-8 mt-10"
               >
                 <div className="space-y-4">
-                  <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center">
-                    <Youtube className="w-8 h-8 text-blue-600" />
+                  <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center">
+                    <Youtube className="w-8 h-8 text-primary" />
                   </div>
-                  <h1 className="text-4xl font-black tracking-tight text-slate-900 leading-tight">
+                  <h1 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white leading-tight">
                     Link your <br />
-                    <span className="text-blue-600">YouTube Channel</span>
+                    <span className="text-primary">YouTube Channel</span>
                   </h1>
-                  <p className="text-slate-500 font-medium text-lg leading-relaxed">
+                  <p className="text-slate-500 dark:text-neutral-400 font-medium text-lg leading-relaxed">
                     We'll fetch metadata and analytics to help our AI better understand your visual style.
                   </p>
                 </div>
@@ -351,7 +351,7 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
                     value={channelUrl}
                     onChange={(e) => setChannelUrl(e.target.value)}
                     placeholder="e.g. youtube.com/@mkbhd"
-                    className="w-full bg-white border border-slate-200 rounded-2xl px-6 py-4 text-lg font-medium text-slate-900 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all placeholder:text-slate-300"
+                    className="w-full bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-2xl px-6 py-4 text-lg font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all placeholder:text-slate-300"
                   />
                 </div>
               </motion.div>
@@ -366,14 +366,14 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
                 className="space-y-8 mt-10"
               >
                 <div className="space-y-4">
-                  <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center">
-                    <Tag className="w-8 h-8 text-blue-600" />
+                  <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center">
+                    <Tag className="w-8 h-8 text-primary" />
                   </div>
-                  <h1 className="text-4xl font-black tracking-tight text-slate-900 leading-tight">
+                  <h1 className="text-4xl font-black tracking-tight text-slate-900 dark:text-white leading-tight">
                     How should we <br />
-                    <span className="text-blue-600">category it?</span>
+                    <span className="text-primary">category it?</span>
                   </h1>
-                  <p className="text-slate-500 font-medium">
+                  <p className="text-slate-500 dark:text-neutral-400 font-medium">
                     This helps structure the insights we pull into your workspace.
                   </p>
                 </div>
@@ -386,15 +386,15 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
                       className={cn(
                         "w-full text-left p-6 rounded-2xl border transition-all group",
                         selectedTag === tag.id 
-                          ? "border-blue-600 bg-blue-50/50" 
-                          : "border-slate-200 bg-white hover:border-slate-300"
+                          ? "border-primary bg-primary/5 dark:bg-primary/10" 
+                          : "border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:border-slate-300 dark:hover:border-neutral-700"
                       )}
                     >
                       <div className="flex justify-between items-center mb-1">
-                        <span className={cn("font-bold text-lg", selectedTag === tag.id ? "text-blue-900" : "text-slate-900")}>{tag.label}</span>
-                        {selectedTag === tag.id && <Check className="w-5 h-5 text-blue-600" />}
+                        <span className={cn("font-bold text-lg", selectedTag === tag.id ? "text-primary dark:text-primary" : "text-slate-900 dark:text-white")}>{tag.label}</span>
+                        {selectedTag === tag.id && <Check className="w-5 h-5 text-primary" />}
                       </div>
-                      <p className={cn("text-sm font-medium", selectedTag === tag.id ? "text-blue-600/80" : "text-slate-500")}>{tag.description}</p>
+                      <p className={cn("text-sm font-medium", selectedTag === tag.id ? "text-primary/80" : "text-slate-500 dark:text-neutral-400")}>{tag.description}</p>
                     </button>
                   ))}
                 </div>
@@ -408,24 +408,24 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
                 animate={{ opacity: 1, scale: 1 }}
                 className="flex flex-col items-center justify-center h-full text-center space-y-8 mt-20"
               >
-                <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center">
+                <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center">
                   <motion.div
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{ type: "spring", damping: 12, stiffness: 200 }}
                   >
-                    <Check className="w-10 h-10 text-blue-600" />
+                    <Check className="w-10 h-10 text-primary" />
                   </motion.div>
                 </div>
                 <div className="space-y-3">
-                  <h2 className="text-3xl font-black text-slate-900">Successfully Linked</h2>
-                  <p className="text-slate-500 font-medium max-w-sm mx-auto leading-relaxed">
+                  <h2 className="text-3xl font-black text-slate-900 dark:text-white">Successfully Linked</h2>
+                  <p className="text-slate-500 dark:text-neutral-400 font-medium max-w-sm mx-auto leading-relaxed">
                     We've pulled metadata and recent uploads from <strong>{channelData?.name || "your channel"}</strong>.
                   </p>
                 </div>
                 <button
                   onClick={() => setStep(4)} // Triggers dashboard render
-                  className="px-8 py-3.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all border border-slate-900"
+                  className="px-8 py-3.5 bg-primary text-white rounded-xl font-bold hover:bg-primary/90 transition-all border border-primary shadow-lg shadow-primary/20"
                 >
                   View Dashboard
                 </button>
@@ -441,7 +441,7 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
               <button
                 onClick={() => setStep(step - 1)}
                 disabled={isFetching}
-                className="px-8 py-4 bg-white border border-slate-200 rounded-2xl font-bold text-slate-600 hover:bg-slate-50 transition-all disabled:opacity-50"
+                className="px-8 py-4 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-2xl font-bold text-slate-600 dark:text-neutral-400 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-all disabled:opacity-50"
               >
                 Back
               </button>
@@ -449,7 +449,7 @@ export default function LinkYouTube({ profile, onBack }: LinkYouTubeProps) {
             <button
               onClick={handleNext}
               disabled={(step === 1 && !channelUrl.trim()) || (step === 2 && !selectedTag) || isFetching}
-              className="flex-1 bg-slate-900 text-white rounded-2xl py-4 flex items-center justify-center gap-2 font-bold hover:bg-slate-800 transition-all disabled:opacity-30 border border-slate-900"
+              className="flex-1 bg-primary text-white rounded-2xl py-4 flex items-center justify-center gap-2 font-bold hover:bg-primary/90 transition-all disabled:opacity-30 border border-primary shadow-lg shadow-primary/20"
             >
               {isFetching ? (
                 <Loader2 className="w-5 h-5 animate-spin" />

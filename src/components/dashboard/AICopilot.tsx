@@ -229,7 +229,7 @@ function MessageBubble({
                         }}
                       >
                         <div className="flex items-center gap-2 overflow-hidden">
-                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
                           <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">CMD</span>
                           <span className={cn("text-xs font-mono text-neutral-600 truncate transition-all", !isExpanded && "max-w-[200px]")}>
                             {trimmed.replace(/^command:\s*/, '')}
@@ -278,7 +278,7 @@ function MessageBubble({
                 return (
                   <button 
                     type="button"
-                    className="inline-flex items-center gap-1.5 mx-0.5 px-2 py-1 bg-red-600/10 text-red-600 rounded-md text-[11px] font-bold hover:bg-red-600 hover:text-white transition-all active:scale-95 border border-red-200/50"
+                    className="inline-flex items-center gap-1.5 mx-0.5 px-2 py-1 bg-primary/10 text-primary rounded-md text-[11px] font-bold hover:bg-primary hover:text-white transition-all active:scale-95 border border-primary/20"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -290,7 +290,7 @@ function MessageBubble({
                   </button>
                 );
               }
-              return <a href={href} className="text-blue-500 hover:underline font-medium" target="_blank" rel="noopener noreferrer">{children}</a>
+              return <a href={href} className="text-primary hover:underline font-medium" target="_blank" rel="noopener noreferrer">{children}</a>
             }
           }}
         >

@@ -295,7 +295,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
   const showCopilotSidebar = isCopilotOpen || (activeTab === "workspace" && isDesktop && !selectedFile);
 
   return (
-    <div className="h-full flex bg-[#f8f9fa] relative overflow-y-auto">
+    <div className="h-full flex bg-[#f8f9fa] dark:bg-black relative overflow-y-auto">
       {/* Sidebar - Hidden on mobile/tablet during editing or when overridden */}
       {!isEditing && (
         <div className={cn("hidden lg:block", isTablet && "hidden")}>
@@ -324,7 +324,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="fixed inset-y-0 left-0 w-[280px] bg-white z-[70] lg:hidden"
+              className="fixed inset-y-0 left-0 w-[280px] bg-white dark:bg-black z-[70] lg:hidden"
             >
               <Sidebar 
                 activeTab={activeTab} 
@@ -341,17 +341,17 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
       <main onScroll={handleMainScroll} className="flex-1 flex flex-col relative overflow-y-auto">
         {/* Mobile/Tablet Header */}
         {!isEditing && (
-          <header className="lg:hidden sticky top-0 flex items-center justify-between px-4 py-3 border-b border-neutral-200 bg-white/80 backdrop-blur-md z-40">
-            <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-neutral-500">
+          <header className="lg:hidden sticky top-0 flex items-center justify-between px-4 py-3 border-b border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-black/80 backdrop-blur-md z-40">
+            <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-neutral-500 hover:text-primary dark:text-neutral-400">
               <Menu className="w-6 h-6" />
             </button>
-            <div className="font-bold text-sm truncate max-w-[200px] flex items-center gap-1">
+            <div className="font-bold text-sm truncate max-w-[200px] flex items-center gap-1 dark:text-white">
               Brandable
-              {isSyncing ? <RefreshCw className="w-3 h-3 animate-spin" /> : !isOnline ? <WifiOff className="w-3 h-3 text-red-500" /> : <Wifi className="w-3 h-3 text-green-500" />}
+              {isSyncing ? <RefreshCw className="w-3 h-3 animate-spin text-primary" /> : !isOnline ? <WifiOff className="w-3 h-3 text-red-500" /> : <Wifi className="w-3 h-3 text-green-500" />}
             </div>
             <button 
               onClick={() => setIsCopilotOpen(!isCopilotOpen)}
-              className="p-2 -mr-2 text-neutral-500"
+              className="p-2 -mr-2 text-neutral-500 hover:text-primary dark:text-neutral-400"
             >
               <MessageSquare className="w-5 h-5" />
             </button>
@@ -439,7 +439,7 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
                   <motion.div 
                     animate={{ rotate: [0, 360], scale: [1, 1.2, 1] }}
                     transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                    className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,#3b82f6,#8b5cf6,#ec4899,#3b82f6)] blur-md opacity-60"
+                    className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,#FF6719,#FF8C50,#FFB38A,#FF6719)] blur-md opacity-60"
                   />
                 </motion.div>
               )}

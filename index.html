@@ -31,12 +31,19 @@
     <link rel="manifest" href="/manifest.json" />
     <script>
       (function() {
-        const theme = localStorage.getItem('theme') || 
-                      (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        if (theme === 'dark') {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
+        try {
+          const theme = localStorage.getItem('theme') || 'system';
+          const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.backgroundColor = '#000000';
+          } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.backgroundColor = '#FF6719';
+          }
+        } catch (e) {
+          console.error('Theme initialization failed', e);
         }
       })();
     </script>

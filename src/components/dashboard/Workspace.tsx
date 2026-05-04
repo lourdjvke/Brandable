@@ -180,7 +180,7 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
   }
 
   return (
-    <div className="min-h-full bg-[#f8f9fa] pb-40">
+    <div className="min-h-full bg-[#f8f9fa] dark:bg-black pb-40">
       <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageUpload} />
       
       {/* Header */}
@@ -188,7 +188,7 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
         <div className="relative">
           <button 
             onClick={() => setShowCreateMenu(!showCreateMenu)}
-            className="flex items-center gap-2 bg-white/50 backdrop-blur-md border border-neutral-200 px-4 py-2 rounded-xl text-sm font-bold text-neutral-900 hover:bg-neutral-100 transition-all shadow-sm active:scale-95"
+            className="flex items-center gap-2 bg-white/50 dark:bg-neutral-900/50 backdrop-blur-md border border-neutral-200 dark:border-neutral-800 px-4 py-2 rounded-xl text-sm font-bold text-neutral-900 dark:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-all shadow-sm active:scale-95"
           >
             <Plus className="w-4 h-4" /> Add dynamic file
           </button>
@@ -198,7 +198,7 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
                 initial={{ opacity: 0, y: 5, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 5, scale: 0.98 }}
-                className="absolute left-0 mt-2 w-56 bg-white border border-neutral-100 rounded-2xl p-1.5 z-50 shadow-2xl"
+                className="absolute left-0 mt-2 w-56 bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-2xl p-1.5 z-50 shadow-2xl"
               >
                 {[
                   { type: "folder", label: "New Folder", icon: <Folder className="w-4 h-4" /> },
@@ -213,9 +213,9 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
                       setCreateModalState({ isOpen: true, type: item.type as FileType });
                       setShowCreateMenu(false);
                     }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-neutral-50 rounded-xl text-sm transition-colors text-left font-semibold text-neutral-600 hover:text-neutral-900"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-xl text-sm transition-colors text-left font-semibold text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-neutral-50 flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-lg bg-neutral-50 dark:bg-neutral-800 flex items-center justify-center">
                       {item.icon}
                     </div>
                     <span>{item.label}</span>
@@ -230,8 +230,8 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
       {/* Greeting & Breadcrumbs */}
       <div className="px-4 flex flex-col gap-1 mt-2">
         <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider">{getGreeting()}</p>
-        <div className="flex items-center gap-1 text-sm font-semibold tracking-tight overflow-hidden">
-          <button onClick={() => setCurrentFolderId(null)} className="hover:text-blue-600 shrink-0">Home</button>
+        <div className="flex items-center gap-1 text-sm font-semibold tracking-tight overflow-hidden dark:text-neutral-200">
+          <button onClick={() => setCurrentFolderId(null)} className="hover:text-primary shrink-0">Home</button>
           
           {currentPath.length > 2 && (
             <div className="flex items-center gap-1 shrink-0">
@@ -242,8 +242,10 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
 
           {currentPath.slice(-2).map((path, i) => (
             <div key={i} className="flex items-center gap-1 overflow-hidden">
-              <ChevronRight className="w-4 h-4 text-neutral-400 shrink-0" />
-              <button className="hover:text-blue-600 truncate max-w-[120px]">{path}</button>
+               <ChevronRight className="w-4 h-4 text-neutral-400 shrink-0" />
+               <button onClick={() => {
+                 // Logic to go back in breadcrumbs could go here
+               }} className="hover:text-primary truncate max-w-[120px]">{path}</button>
             </div>
           ))}
         </div>
@@ -264,7 +266,7 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
                 items={[
                   { label: "Open", icon: <ChevronRight />, onClick: () => setCurrentFolderId(folder.id) },
                   { label: "Change Cover", icon: <ImageIcon />, onClick: () => triggerImageUpload(folder.id) },
-                  { label: "Change Color", icon: <div className="w-4 h-4 rounded-full bg-gradient-to-r from-red-500 via-green-500 to-blue-500" />, onClick: () => setColorModalState({ isOpen: true, fileId: folder.id }) },
+                  { label: "Change Color", icon: <div className="w-4 h-4 rounded-full bg-gradient-to-r from-red-500 via-green-500 to-primary" />, onClick: () => setColorModalState({ isOpen: true, fileId: folder.id }) },
                   { label: "Rename", icon: <FileText />, onClick: () => setRenameModalState({ isOpen: true, fileId: folder.id, currentName: folder.name }) },
                   { label: "Delete", icon: <Plus className="rotate-45" />, onClick: () => setDeleteModalState({ isOpen: true, fileId: folder.id }), variant: "danger" as const },
                 ]}
@@ -313,7 +315,7 @@ export default function Workspace({ profile, currentFolderId, setCurrentFolderId
             ))}
           </AnimatePresence>
           {recentFiles.length === 0 && !loading && (
-            <div className="col-span-full flex flex-col items-center justify-center py-20 text-neutral-400 bg-white rounded-3xl border border-dashed border-neutral-200">
+            <div className="col-span-full flex flex-col items-center justify-center py-20 text-neutral-400 bg-white dark:bg-neutral-900 rounded-3xl border border-dashed border-neutral-200 dark:border-neutral-800">
               <p className="text-sm font-bold uppercase tracking-widest opacity-50">Empty Workspace</p>
             </div>
           )}
@@ -387,7 +389,7 @@ function FileGridCard({ file, onClick, onDelete }: { file: FileItem; onClick: ()
 
   const getBgColor = () => {
     switch (file.type) {
-      case "script": return "bg-blue-500";
+      case "script": return "bg-primary";
       case "caption": return "bg-indigo-500";
       case "thread": return "bg-sky-500";
       case "brainstorm": return "bg-purple-500";
@@ -420,7 +422,7 @@ function FileGridCard({ file, onClick, onDelete }: { file: FileItem; onClick: ()
   return (
     <div 
       onClick={onClick}
-      className="group bg-white rounded-3xl border border-neutral-100 p-4 flex flex-col gap-4 cursor-pointer hover:border-neutral-200 transition-all hover:translate-y-[-2px] active:translate-y-0"
+      className="group bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-4 flex flex-col gap-4 cursor-pointer hover:border-neutral-200 dark:hover:border-neutral-700 transition-all hover:translate-y-[-2px] active:translate-y-0"
     >
       <div className="flex justify-between items-start">
         <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg shadow-black/5", getBgColor())}>
@@ -439,15 +441,15 @@ function FileGridCard({ file, onClick, onDelete }: { file: FileItem; onClick: ()
 
       <div className="space-y-1">
         <div className="flex justify-between items-center gap-2">
-          <h3 className="font-bold text-sm truncate text-neutral-900">{file.name}</h3>
+          <h3 className="font-bold text-sm truncate text-neutral-900 dark:text-white">{file.name}</h3>
           <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider shrink-0">{timeAgo(file.updatedAt)}</span>
         </div>
-        <p className="text-xs text-neutral-500 line-clamp-2 font-medium leading-relaxed">
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2 font-medium leading-relaxed">
           {getPreviewText(file.content)}
         </p>
       </div>
 
-      <div className="relative aspect-video rounded-2xl overflow-hidden bg-neutral-50 border border-neutral-50">
+      <div className="relative aspect-video rounded-2xl overflow-hidden bg-neutral-50 dark:bg-neutral-800 border border-neutral-50 dark:border-neutral-800">
         <img 
           src={file.headerImage || ILLUSTRATIONS.boyAndGirlHoldingPen} 
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" 

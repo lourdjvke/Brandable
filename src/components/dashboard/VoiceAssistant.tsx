@@ -553,7 +553,7 @@ export default forwardRef<any, VoiceAssistantProps>(function VoiceAssistant({
                 opacity: [0.3, 0.5, 0.3],
               }}
               transition={{ duration: 3, repeat: Infinity }}
-              className="absolute inset-0 bg-blue-500/10 blur-3xl z-0"
+              className="absolute inset-0 bg-primary/10 blur-3xl z-0"
             />
 
             <div className="relative z-10 flex flex-col items-center gap-4 w-full">
