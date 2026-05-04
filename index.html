@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#FF6719" />
     
     <!-- Primary Meta Tags -->
     <title>Brandable | The Ultimate AI-Powered Content & Brand OS</title>
@@ -34,14 +37,29 @@
         try {
           const theme = localStorage.getItem('theme') || 'system';
           const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          const root = document.documentElement;
           
           if (isDark) {
-            document.documentElement.classList.add('dark');
-            document.documentElement.style.backgroundColor = '#000000';
+            root.classList.add('dark');
+            root.style.backgroundColor = '#000000';
           } else {
-            document.documentElement.classList.remove('dark');
-            document.documentElement.style.backgroundColor = '#FF6719';
+            root.classList.remove('dark');
+            root.style.backgroundColor = '#f8f9fa';
           }
+
+          // Mobile Status Bar Color Sync
+          let metaThemeColor = document.querySelector('meta[name="theme-color"]');
+          if (metaThemeColor) {
+            metaThemeColor.setAttribute('content', isDark ? '#000000' : '#ffffff');
+          }
+
+          // Force background-color immediately to avoid flash
+          const style = document.createElement('style');
+          style.innerHTML = `
+            html.dark, html.dark body { background-color: #000000 !important; color: #ffffff; }
+            html.light, html.light body { background-color: #f8f9fa !important; color: #0f172a; }
+          `;
+          document.head.appendChild(style);
         } catch (e) {
           console.error('Theme initialization failed', e);
         }

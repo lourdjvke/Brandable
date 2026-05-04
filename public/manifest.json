@@ -4,8 +4,8 @@
   "description": "AI-powered workspace for creators.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f8f9fa",
-  "theme_color": "#3b82f6",
+  "background_color": "#ffffff",
+  "theme_color": "#FF6719",
   "icons": [
     {
       "src": "https://cdn-icons-png.flaticon.com/512/3670/3670151.png",

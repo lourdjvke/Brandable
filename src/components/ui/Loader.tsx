@@ -1,6 +1,17 @@
+import { useEffect } from "react";
 import { motion } from "motion/react";
 
 export default function Loader() {
+  useEffect(() => {
+    const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+    const originalColor = metaThemeColor?.getAttribute('content') || '#ffffff';
+    metaThemeColor?.setAttribute('content', '#FF6719');
+    
+    return () => {
+      metaThemeColor?.setAttribute('content', originalColor);
+    };
+  }, []);
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}

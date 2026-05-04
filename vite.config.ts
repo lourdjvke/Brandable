@@ -11,22 +11,63 @@ export default defineConfig(({mode}) => {
       react(), 
       tailwindcss(),
       VitePWA({
-        registerType: 'prompt',
+        registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
         workbox: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,json,webp}'],
           cleanupOutdatedCaches: true,
           clientsClaim: true,
-          skipWaiting: false,
+          skipWaiting: true,
           maximumFileSizeToCacheInBytes: 5242880,
+          runtimeCaching: [
+            {
+              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts-cache',
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60 * 24 * 365, // <--- 1 year
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
+            {
+              urlPattern: /^https:\/\/cdn\.dribbble\.com\/.*/i,
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'external-assets-cache',
+                expiration: {
+                  maxEntries: 50,
+                  maxAgeSeconds: 60 * 60 * 24 * 30, // <--- 30 days
+                },
+              },
+            },
+            {
+              urlPattern: /^https:\/\/cdn-icons-png\.flaticon\.com\/.*/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'icons-cache',
+                expiration: {
+                  maxEntries: 20,
+                  maxAgeSeconds: 60 * 60 * 24 * 30,
+                },
+              },
+            }
+          ]
         },
         manifest: {
           name: 'Brandable OS',
           short_name: 'Brandable',
           description: 'The Ultimate AI-Powered Content & Brand OS',
-          theme_color: '#ffffff',
+          theme_color: '#FF6719',
           background_color: '#ffffff',
           display: 'standalone',
+          orientation: 'portrait',
+          scope: '/',
+          start_url: '/',
           icons: [
             {
               src: 'https://cdn.dribbble.com/userupload/46470256/file/af6fd035c99fbb7985614c15d3a47d96.jpg?format=webp&resize=640x480&vertical=center',
@@ -36,7 +77,8 @@ export default defineConfig(({mode}) => {
             {
               src: 'https://cdn.dribbble.com/userupload/46470256/file/af6fd035c99fbb7985614c15d3a47d96.jpg?format=webp&resize=640x480&vertical=center',
               sizes: '512x512',
-              type: 'image/webp'
+              type: 'image/webp',
+              purpose: 'any maskable'
             }
           ]
         }

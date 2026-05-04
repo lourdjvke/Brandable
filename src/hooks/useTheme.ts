@@ -10,9 +10,23 @@ export function useTheme() {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
     const applyTheme = (t: Theme) => {
-      root.classList.remove('light', 'dark');
+      const root = window.document.documentElement;
+      const body = window.document.body;
+      
       const isDark = t === 'dark' || (t === 'system' && mediaQuery.matches);
-      root.classList.add(isDark ? 'dark' : 'light');
+      const themeClass = isDark ? 'dark' : 'light';
+      
+      root.classList.remove('light', 'dark');
+      body.classList.remove('light', 'dark');
+      root.classList.add(themeClass);
+      body.classList.add(themeClass);
+      
+      // Strict pure black background for dark mode on body
+      if (isDark) {
+        body.style.backgroundColor = '#000000';
+      } else {
+        body.style.backgroundColor = '#f8f9fa';
+      }
       
       // Update theme-color meta tag for mobile status bar
       let metaThemeColor = document.querySelector('meta[name="theme-color"]');
@@ -21,7 +35,7 @@ export function useTheme() {
         metaThemeColor.setAttribute('name', 'theme-color');
         document.head.appendChild(metaThemeColor);
       }
-      metaThemeColor.setAttribute('content', isDark ? '#000000' : '#FF6719');
+      metaThemeColor.setAttribute('content', isDark ? '#000000' : '#ffffff');
     };
 
     localStorage.setItem('theme', theme);

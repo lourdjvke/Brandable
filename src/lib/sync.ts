@@ -1,6 +1,6 @@
 import { getMutations, clearMutations } from './db';
 import { rtdb } from './firebase';
-import { ref, update } from 'firebase/database';
+import { ref, update, set, remove } from 'firebase/database';
 
 export const syncQueue = async () => {
   const mutations = await getMutations();
