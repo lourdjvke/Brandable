@@ -3,9 +3,10 @@ import { motion } from "motion/react";
 
 export default function Loader() {
   useEffect(() => {
+    const isDark = document.body.classList.contains('dark');
     const metaThemeColor = document.querySelector('meta[name="theme-color"]');
     const originalColor = metaThemeColor?.getAttribute('content') || '#ffffff';
-    metaThemeColor?.setAttribute('content', '#FF6719');
+    metaThemeColor?.setAttribute('content', isDark ? '#000000' : '#ffffff');
     
     return () => {
       metaThemeColor?.setAttribute('content', originalColor);
@@ -17,20 +18,20 @@ export default function Loader() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-[#FF6719] z-[9999] flex flex-col items-center justify-center gap-6 overflow-hidden"
+      className="fixed inset-0 bg-white dark:bg-black z-[9999] flex flex-col items-center justify-center gap-6 overflow-hidden"
     >
       <div className="relative">
         <motion.div 
           animate={{ 
             scale: [1, 1.2, 1],
-            opacity: [0.2, 0.4, 0.2] 
+            opacity: [0.1, 0.2, 0.1] 
           }}
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute inset-0 bg-white blur-3xl rounded-full"
+          className="absolute inset-0 bg-primary blur-3xl rounded-full"
         />
         <motion.img 
           src="https://cdn-icons-png.magnific.com/512/42/42734.png"
-          className="w-24 h-24 brightness-0 invert relative z-10"
+          className="w-24 h-24 relative z-10 dark:brightness-200"
           animate={{ 
             y: [0, -15, 0],
             rotate: [0, 5, -5, 0]

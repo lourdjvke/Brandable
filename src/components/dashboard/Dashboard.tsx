@@ -423,9 +423,13 @@ function DashboardContent({ profile }: { profile: UserProfile }) {
             <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-neutral-500 hover:text-primary dark:text-neutral-400">
               <Menu className="w-6 h-6" />
             </button>
-            <div className="font-bold text-sm truncate max-w-[200px] flex items-center gap-1 dark:text-white">
-              Brandable
-              {isSyncing ? <RefreshCw className="w-3 h-3 animate-spin text-primary" /> : !isOnline ? <WifiOff className="w-3 h-3 text-red-500" /> : <Wifi className="w-3 h-3 text-green-500" />}
+            <div className="flex items-center gap-1.5 overflow-hidden">
+               <img 
+                 src="https://cdn-icons-png.magnific.com/512/42/42734.png" 
+                 className="w-5 h-5 object-contain shrink-0 dark:brightness-200" 
+                 alt="Logo"
+               />
+               {isSyncing ? <RefreshCw className="w-3 h-3 animate-spin text-primary" /> : !isOnline ? <WifiOff className="w-3 h-3 text-red-500" /> : <Wifi className="w-3 h-3 text-green-500" />}
             </div>
             <button 
               onClick={() => setIsCopilotOpen(!isCopilotOpen)}

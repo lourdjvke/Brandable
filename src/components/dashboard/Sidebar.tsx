@@ -28,10 +28,9 @@ export default function Sidebar({ activeTab, setActiveTab, onClose, isCopilotOpe
     <aside className="w-full md:w-64 border-r border-neutral-100 dark:border-neutral-800 flex flex-col h-full bg-white dark:bg-black backdrop-blur-md">
       <div className="p-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <img src={ILLUSTRATIONS.appLogo} alt="Logo" className="w-8 h-8 object-contain dark:invert" referrerPolicy="no-referrer" />
+          <img src="https://cdn-icons-png.magnific.com/512/42/42734.png" alt="Logo" className="w-8 h-8 object-contain dark:brightness-200" />
           <div className="flex flex-col overflow-hidden">
-            <h1 className="font-bold truncate text-sm dark:text-white">Brandable</h1>
-            <p className="text-[10px] text-neutral-400 uppercase tracking-wider font-semibold">
+            <p className="text-[10px] text-neutral-400 uppercase tracking-[0.2em] font-black">
               Content OS
             </p>
           </div>

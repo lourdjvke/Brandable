@@ -68,7 +68,8 @@ export default function SettingsView({ profile, onKeyChange }: { profile: UserPr
         <section className="bg-white dark:bg-neutral-900 rounded-2xl p-5 shadow-sm border border-neutral-100 dark:border-neutral-800 flex flex-col gap-4">
           <div className="flex items-center gap-3 border-b border-neutral-50 dark:border-neutral-800 pb-3">
             <div className="w-8 h-8 rounded-xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-600 dark:text-neutral-400">
-              <Palette className="w-4 h-4" />
+              <Sun className="w-4 h-4 dark:hidden" />
+              <Moon className="w-4 h-4 hidden dark:block" />
             </div>
             <h2 className="font-semibold text-sm dark:text-white">Appearance</h2>
           </div>

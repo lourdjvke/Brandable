@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useMemo, useImperativeHandle, forwardRef } from "react";
-import { UserProfile, ChatSession, ChatMessage, FileItem, FileType } from "@/src/types";
+import { UserProfile, ChatSession, ChatMessage, FileItem, FileType, KnowledgeFile, VoiceMode } from "@/src/types";
 import { db, rtdb } from "@/src/lib/firebase";
 import { collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc, getDocs, where } from "firebase/firestore";
 import { ref as dbRef, onValue, set, push, update, remove, query as rtdbQuery, orderByChild, equalTo, get as dbGet, child } from "firebase/database";
-import { Copy, Send, Mic, Square, Settings, Plus, Image as ImageIcon, X, Loader2, ChevronRight, BrainCircuit, ChevronDown, User, Bot, MessageSquare, History, Volume2, RotateCcw, ExternalLink, ArrowDown, Check, Youtube, Minimize2 } from "lucide-react";
+import { Copy, Send, Mic, Square, Settings, Plus, Image as ImageIcon, X, Loader2, ChevronRight, BrainCircuit, ChevronDown, User, Bot, MessageSquare, History, Volume2, RotateCcw, ExternalLink, ArrowDown, Check, Youtube, Minimize2, FileText, Paperclip, Waves, Headphones, Type as TypeIcon } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
 import { GoogleGenAI, LiveServerMessage, Modality, Type, ThinkingLevel } from "@google/genai";
@@ -363,7 +363,7 @@ function MessageBubble({
           <div className="mt-3 flex flex-wrap gap-2">
             <button 
               onClick={() => onOpenSettings?.()}
-              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-neutral-200 text-neutral-900 rounded-lg text-xs font-bold hover:bg-neutral-50 transition-all active:scale-95 font-sans"
+              className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white rounded-lg text-xs font-bold hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all active:scale-95 font-sans"
             >
               <Settings className="w-3.5 h-3.5" />
               Open Options
@@ -563,6 +563,10 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   const [isGenerating, setIsGenerating] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [showModelSelector, setShowModelSelector] = useState(false);
+  const [knowledgeFiles, setKnowledgeFiles] = useState<KnowledgeFile[]>([]);
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>("both");
+  const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
+  const [showVoiceOptions, setShowVoiceOptions] = useState(false);
   const [dynamicSuggestions, setDynamicSuggestions] = useState<string[]>([]);
   const [isSuggestionsLoading, setIsSuggestionsLoading] = useState(false);
   const [lastLiveResponse, setLastLiveResponse] = useState<string>("");
@@ -685,10 +689,21 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
     const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 100;
+    
+    // If user scrolls up, disable auto-scroll
+    if (!isAtBottom && isAutoScrollEnabled) {
+      setIsAutoScrollEnabled(false);
+    } 
+    // If user scrolls back to bottom, enable auto-scroll
+    else if (isAtBottom && !isAutoScrollEnabled) {
+      setIsAutoScrollEnabled(true);
+    }
+    
     setShowScrollBottom(!isAtBottom);
   };
 
   const scrollToBottom = () => {
+    setIsAutoScrollEnabled(true);
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
@@ -1010,17 +1025,22 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
   useEffect(() => {
     if (!currentSessionId) {
       setMessages([]);
+      setKnowledgeFiles([]);
       return;
     }
     const session = sessions.find(s => s.id === currentSessionId);
     if (session) {
       setMessages(session.messages || []);
+      setKnowledgeFiles(session.knowledgeFiles || []);
+      setVoiceMode(session.voiceMode || "both");
     }
   }, [currentSessionId, sessions]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (isAutoScrollEnabled) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isAutoScrollEnabled]);
 
   const createNewSession = async () => {
     const newSession: Omit<ChatSession, "id"> = {
@@ -1119,21 +1139,85 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length + attachedImages.length > 4) {
-      alert("You can attach up to 4 images.");
-      return;
-    }
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const uploadedFiles = Array.from(e.target.files || []);
     
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAttachedImages(prev => [...prev, { url: reader.result as string, file }]);
-      };
-      reader.readAsDataURL(file);
+    uploadedFiles.forEach(file => {
+      const isImage = file.type.startsWith("image/");
+      const isText = file.name.endsWith(".txt") || file.name.endsWith(".md");
+      
+      if (isImage) {
+        if (attachedImages.length >= 4) {
+          alert("Max 4 images.");
+          return;
+        }
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setAttachedImages(prev => [...prev, { url: reader.result as string, file }]);
+        };
+        reader.readAsDataURL(file);
+      } else if (isText) {
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          const content = event.target?.result as string;
+          const label = window.prompt("Label this knowledge file:", "Project Context") || "Memory";
+          
+          const newKnowledge: KnowledgeFile = {
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            name: file.name,
+            content,
+            type: file.name.endsWith(".md") ? "md" : "txt",
+            label,
+            isActive: true,
+            createdAt: Date.now()
+          };
+          
+          setKnowledgeFiles(prev => {
+            const updated = [...prev, newKnowledge];
+            if (currentSessionId) {
+              update(dbRef(rtdb, `chatSessions/${currentSessionId}`), {
+                knowledgeFiles: updated
+              });
+            }
+            return updated;
+          });
+        };
+        reader.readAsText(file);
+      }
     });
+    
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const toggleKnowledgeFile = (id: string) => {
+    setKnowledgeFiles(prev => {
+      const updated = prev.map(f => f.id === id ? { ...f, isActive: !f.isActive } : f);
+      if (currentSessionId) {
+        update(dbRef(rtdb, `chatSessions/${currentSessionId}`), {
+          knowledgeFiles: updated
+        });
+      }
+      return updated;
+    });
+  };
+
+  const deleteKnowledgeFile = (id: string) => {
+    setKnowledgeFiles(prev => {
+      const updated = prev.filter(f => f.id !== id);
+      if (currentSessionId) {
+        update(dbRef(rtdb, `chatSessions/${currentSessionId}`), {
+          knowledgeFiles: updated
+        });
+      }
+      return updated;
+    });
+  };
+
+  const setVoiceModeInSession = (mode: VoiceMode) => {
+    setVoiceMode(mode);
+    if (currentSessionId) {
+      update(dbRef(rtdb, `chatSessions/${currentSessionId}`), { voiceMode: mode });
+    }
   };
 
   const removeImage = (index: number) => {
@@ -1269,6 +1353,12 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
         let usedModelName = useRandomModel 
           ? untriedModels.splice(Math.floor(Math.random() * untriedModels.length), 1)[0]
           : untriedModels.shift()!;
+
+        // Inject active knowledge files into context
+        const activeKnowledgeFiles = knowledgeFiles.filter(kf => kf.isActive);
+        const knowledgeContext = activeKnowledgeFiles.length > 0 
+          ? `\n\n[KNOWLEDGE BASE INJECTION]\n${activeKnowledgeFiles.map(kf => `File: ${kf.name} (${kf.label})\nContent: ${kf.content}`).join('\n---\n')}\n[/KNOWLEDGE BASE INJECTION]`
+          : "";
 
         try {
           const functionDeclarations = [
@@ -1485,8 +1575,16 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           }
 
           const systemInstruction = `You are Brandable's AI Copilot. You help users manage their content, scripts, captions, and brainstorms.
+
+              BEHAVIOR GUIDELINES:
+              - Default to a normal flowing conversation (Claude/ChatGPT style).
+              - NEVER automatically create projects, files, or folders unless the user EXPLICITLY asks for it (e.g., "Create a script for...", "Organize this into a folder").
+              - Treat uploaded knowledge files as your primary source of truth, context, and project details.
+              - If the user provides instructions in a knowledge file, follow them strictly.
+
               Current context: User is in folder path: /${currentPath.join("/")}.
               Current file system knowledge: ${JSON.stringify(files.map(f => ({ id: f.id, name: f.name, type: f.type, parentId: f.parentId })))}
+              ${knowledgeContext}
 
               CRITICAL UI KNOWLEDGE: The File Editor now uses a TipTap HTML Rich Text editor. It NO LONGER uses standard Markdown. 
               When creating or updating files with the \`create_file\` or \`update_file\` (if exists) tools, you MUST provide valid HTML content.
@@ -1831,11 +1929,13 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
         }
       };
 
+      const responseModalities = voiceMode === "text-only" ? ["TEXT"] : (voiceMode === "voice-only" ? ["AUDIO"] : ["TEXT", "AUDIO"]);
+
       const sessionPromise = (liveAI as any).live.connect({
         model: "gemini-3.1-flash-live-preview",
         config: {
           generationConfig: {
-            responseModalities: ["TEXT", "AUDIO"],
+            responseModalities,
           },
           systemInstruction: {
             parts: [{ text: `You are Brandable's AI Copilot. You are in a live voice session.
@@ -2158,7 +2258,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             if (message.serverContent?.modelTurn) {
               const parts = message.serverContent.modelTurn.parts;
               for (const part of parts) {
-                if (part.inlineData && part.inlineData.data) {
+                if (part.inlineData && part.inlineData.data && voiceMode !== "text-only") {
                   const base64Audio = part.inlineData.data;
                   const binaryString = atob(base64Audio);
                   const len = binaryString.length;
@@ -2185,7 +2285,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
                     currentAudioSourceRef.current = playSource;
                   }
                 }
-                if (part.text) {
+                if (part.text && voiceMode !== "voice-only") {
                   currentAiTextRef.current += part.text;
                   setLastLiveResponse(currentAiTextRef.current);
                 }
@@ -2367,24 +2467,36 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
       )}>
         <div className="flex items-center gap-2.5">
           <div className={cn(
-            "p-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-lg transition-all relative overflow-hidden",
-            activeVideoPlayer && "p-2"
+            "p-1.5 bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-lg transition-all relative overflow-hidden",
+            activeVideoPlayer && "p-1.5"
           )}>
-            <BrainCircuit className={cn("w-5 h-5 text-black dark:text-white transition-all", activeVideoPlayer && "w-4 h-4")} />
+            <img 
+               src="https://cdn-icons-png.magnific.com/512/42/42734.png" 
+               className={cn("w-6 h-6 object-contain", activeVideoPlayer && "w-5 h-5", "dark:brightness-200")} 
+               alt="Logo"
+            />
             {activeVideoPlayer && (
                <motion.div 
                  animate={{ opacity: [0.4, 1, 0.4] }} 
                  transition={{ duration: 2, repeat: Infinity }}
-                 className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white" 
+                 className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-black" 
                />
             )}
           </div>
           <div className="flex flex-col">
-            <h2 className={cn("text-sm font-extrabold text-neutral-900 tracking-tight transition-all", activeVideoPlayer && "text-xs leading-none mb-0.5")}>AI Copilot</h2>
+            <div className="flex items-center gap-2">
+              <h2 className={cn("text-xs font-black text-neutral-900 dark:text-white tracking-widest uppercase transition-all", activeVideoPlayer && "text-[10px] leading-none mb-0.5")}>AI Copilot</h2>
+              {knowledgeFiles.filter(kf => kf.isActive).length > 0 && (
+                <div className="flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 border border-primary/20 rounded-md">
+                   <BrainCircuit className="w-2.5 h-2.5 text-primary" />
+                   <span className="text-[8px] font-black uppercase text-primary tracking-tighter">{knowledgeFiles.filter(kf => kf.isActive).length} Memories</span>
+                </div>
+              )}
+            </div>
             {activeVideoPlayer && (
                <div className="flex items-center gap-1.5 overflow-hidden">
                  <Youtube className="w-2.5 h-2.5 text-red-600" />
-                 <span className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest truncate max-w-[120px]">Active Video</span>
+                 <span className="text-[9px] font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-widest truncate max-w-[120px]">Active Video</span>
                </div>
             )}
           </div>
@@ -2393,7 +2505,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           {activeVideoPlayer?.isMinimized && (
             <button 
               onClick={() => setActiveVideoPlayer(prev => prev ? { ...prev, isMinimized: false } : null)}
-              className="px-2 py-1 bg-red-50 text-red-600 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-red-100 transition-all flex items-center gap-1.5"
+              className="px-2 py-1 bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-red-100 dark:hover:bg-red-900/30 transition-all flex items-center gap-1.5"
             >
               <Youtube className="w-3 h-3" />
               Maximize
@@ -2401,13 +2513,13 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
           )}
           <button 
             onClick={() => setShowSessions(true)}
-            className="p-2.5 text-neutral-400 hover:text-black hover:bg-neutral-50 rounded-xl transition-all active:scale-95"
+            className="p-2.5 text-neutral-400 hover:text-black dark:hover:text-white hover:bg-neutral-50 dark:hover:bg-neutral-900 rounded-xl transition-all active:scale-95"
           >
             <History className="w-5 h-5" />
           </button>
           <button 
             onClick={onOpenSettings}
-            className="p-2.5 text-neutral-400 hover:text-black hover:bg-neutral-50 rounded-xl transition-all active:scale-95"
+            className="p-2.5 text-neutral-400 hover:text-black dark:hover:text-white hover:bg-neutral-50 dark:hover:bg-neutral-900 rounded-xl transition-all active:scale-95"
           >
             <Settings className="w-5 h-5" />
           </button>
@@ -2431,7 +2543,7 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
               exit={{ y: "100%" }}
               className="absolute bottom-0 inset-x-0 h-[50vh] bg-white dark:bg-neutral-900 rounded-t-[32px] z-50 flex flex-col overflow-hidden shadow-2xl border-t border-neutral-100 dark:border-neutral-800"
             >
-              <div className="flex flex-col h-full bg-white dark:bg-neutral-900">
+              <div className="flex flex-col h-full bg-white dark:bg-black">
                 <div className="flex items-center justify-between px-6 py-5 border-b border-neutral-100 dark:border-neutral-800">
                   <div className="flex items-center gap-3">
                     <History className="w-5 h-5 text-neutral-400 dark:text-neutral-500" />
@@ -2694,8 +2806,8 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
         {isGenerating && (
           <div className="self-start px-0.5">
             <div className="flex items-center gap-2 mb-1.5 opacity-50">
-              <Bot className="w-3 h-3" />
-              <span className="text-[10px] font-bold uppercase tracking-widest">AI Thinking</span>
+              <Bot className="w-3 h-3 dark:text-neutral-400" />
+              <span className="text-[10px] font-bold uppercase tracking-widest dark:text-white">AI Thinking</span>
             </div>
             <Loader2 className="w-5 h-5 animate-spin text-neutral-400" />
           </div>
@@ -2736,46 +2848,79 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
 
       {/* Input Area */}
       <div className={cn(
-        "p-4 bg-white/80 dark:bg-black/80 backdrop-blur-xl border-t border-neutral-100 dark:border-neutral-800 shrink-0 transition-all",
-        activeVideoPlayer && "md:p-4 p-2" // Minimal padding on mobile when player is active
+        "p-4 bg-white/80 dark:bg-black/90 backdrop-blur-3xl border-t border-neutral-100 dark:border-neutral-800 shrink-0 transition-all",
+        activeVideoPlayer && "md:p-4 p-2"
       )}>
-        {/* Attached Images Preview */}
-        {attachedImages.length > 0 && !activeVideoPlayer && ( // Hide image preview on mobile when player is active to save space
-          <div className="flex gap-2 mb-3 overflow-x-auto pb-2">
+        {/* Knowledge Files & Attached Images Preview */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          <AnimatePresence>
+            {knowledgeFiles.map((kf) => (
+              <motion.div
+                key={kf.id}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className={cn(
+                  "flex items-center gap-2 pl-2 pr-1 py-1 rounded-full text-[10px] font-bold border transition-all",
+                  kf.isActive 
+                    ? "bg-primary/10 border-primary text-primary" 
+                    : "bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-400 grayscale"
+                )}
+              >
+                <div 
+                  className="flex items-center gap-1.5 cursor-pointer max-w-[120px]"
+                  onClick={() => toggleKnowledgeFile(kf.id)}
+                >
+                  <FileText className="w-3 h-3" />
+                  <span className="truncate">{kf.label}: {kf.name}</span>
+                </div>
+                <button 
+                  onClick={() => deleteKnowledgeFile(kf.id)}
+                  className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-full"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </motion.div>
+            ))}
+            
             {attachedImages.map((img, idx) => (
-              <div key={idx} className="relative shrink-0">
-                <img src={img.url} alt="Preview" className="w-16 h-16 object-cover rounded-xl border border-neutral-200 dark:border-neutral-800" />
+              <motion.div 
+                key={idx}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="relative shrink-0"
+              >
+                <img src={img.url} alt="Preview" className="w-12 h-12 object-cover rounded-lg border border-neutral-200 dark:border-neutral-800" />
                 <button 
                   onClick={() => removeImage(idx)}
-                  className="absolute -top-2 -right-2 w-5 h-5 bg-black dark:bg-primary text-white rounded-full flex items-center justify-center shadow-sm"
+                  className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-black dark:bg-primary text-white rounded-full flex items-center justify-center shadow-sm"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-2 h-2" />
                 </button>
-              </div>
+              </motion.div>
             ))}
-          </div>
-        )}
+          </AnimatePresence>
+        </div>
 
         <div className={cn(
-          "flex items-end gap-2 bg-neutral-100 dark:bg-neutral-900 p-1.5 rounded-2xl border border-neutral-100 dark:border-neutral-800 focus-within:border-neutral-200 dark:focus-within:border-neutral-700 focus-within:bg-neutral-50 dark:focus-within:bg-neutral-800/50 transition-all relative",
-          activeVideoPlayer && "rounded-xl" // Slightly sharper corners for minimal look
+          "flex items-end gap-2 bg-neutral-50 dark:bg-neutral-900/50 p-2 rounded-3xl border border-neutral-100 dark:border-neutral-800/50 focus-within:border-neutral-200 dark:focus-within:border-neutral-700 focus-within:bg-white dark:focus-within:bg-neutral-900 transition-all relative",
+          activeVideoPlayer && "rounded-2xl" 
         )}>
           <input 
             type="file" 
-            accept="image/*" 
+            accept="image/*,.txt,.md" 
             multiple 
             className="hidden" 
             ref={fileInputRef}
-            onChange={handleImageUpload}
+            onChange={handleFileUpload}
           />
-          {!activeVideoPlayer && ( // Hide attachment button on mobile when player is active
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="p-2.5 text-neutral-400 hover:text-black dark:hover:text-white transition-all rounded-xl hover:bg-white dark:hover:bg-neutral-800 shrink-0 active:scale-95"
-            >
-              <ImageIcon className="w-5 h-5" />
-            </button>
-          )}
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2.5 text-neutral-400 hover:text-black dark:hover:text-white transition-all rounded-2xl hover:bg-neutral-100 dark:hover:bg-neutral-800 shrink-0 active:scale-95"
+          >
+            <Paperclip className="w-5 h-5" />
+          </button>
           
           {linkPreview && (
               <div className="absolute bottom-full mb-2 inset-x-0 mx-2 bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-xl overflow-hidden shadow-xl p-3 flex gap-3">
@@ -2809,40 +2954,107 @@ export default forwardRef<any, AICopilotProps>(function AICopilot({
             <button 
               onClick={() => handleSend()}
               disabled={isGenerating}
-              className="p-2.5 bg-black dark:bg-primary text-white rounded-xl hover:scale-105 active:scale-95 transition-all disabled:opacity-30 shrink-0 shadow-lg shadow-black/10 dark:shadow-primary/20"
+              className="p-2.5 bg-black dark:bg-primary text-white rounded-2xl hover:scale-105 active:scale-95 transition-all disabled:opacity-30 shrink-0 shadow-lg shadow-black/10 dark:shadow-primary/20"
             >
               <Send className="w-5 h-5" />
             </button>
           ) : (
-            <button 
-              onClick={isLive ? stopLiveSession : startLiveSession}
-              disabled={isConnecting}
-              className={cn(
-                "p-2.5 rounded-xl transition-all shrink-0 relative overflow-hidden active:scale-95",
-                isLive ? "bg-red-500 text-white" : "bg-white dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 border border-neutral-100 dark:border-neutral-700 hover:text-black dark:hover:text-white hover:bg-neutral-50 dark:hover:bg-neutral-700 shadow-sm",
-                activeVideoPlayer && "p-1.5"
-              )}
-            >
-              {isLive && (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="absolute inset-0 z-0"
-                >
+            <div className="relative">
+              <button 
+                onClick={() => setShowVoiceOptions(!showVoiceOptions)}
+                disabled={isConnecting}
+                className={cn(
+                  "p-2.5 rounded-2xl transition-all shrink-0 relative overflow-hidden active:scale-95",
+                  isLive ? "bg-red-500 text-white" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 border border-neutral-100 dark:border-neutral-700 hover:text-black dark:hover:text-white hover:bg-white dark:hover:bg-neutral-700 shadow-sm",
+                  activeVideoPlayer && "p-1.5"
+                )}
+              >
+                {isLive && (
                   <motion.div 
-                    animate={{ 
-                      rotate: [0, 360],
-                      scale: [1, 1.2, 1],
-                    }}
-                    transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                    className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,#3b82f6,#8b5cf6,#ec4899,#3b82f6)] blur-md opacity-60"
-                  />
-                </motion.div>
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="absolute inset-0 z-0"
+                  >
+                    <motion.div 
+                      animate={{ 
+                        rotate: [0, 360],
+                        scale: [1, 1.2, 1],
+                      }}
+                      transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                      className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,#3b82f6,#8b5cf6,#ec4899,#3b82f6)] blur-md opacity-60"
+                    />
+                  </motion.div>
+                )}
+                <div className="relative z-10">
+                  {isConnecting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Mic className={cn("w-5 h-5", activeVideoPlayer && "w-4 h-4")} />}
+                </div>
+              </button>
+
+              <AnimatePresence>
+                {showVoiceOptions && !isLive && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute bottom-full right-0 mb-3 bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-2xl shadow-2xl p-2 min-w-[180px] z-[60]"
+                  >
+                    <div className="grid gap-1">
+                      <button
+                        onClick={() => {
+                          setVoiceModeInSession("text-only");
+                          startLiveSession();
+                          setShowVoiceOptions(false);
+                        }}
+                        className="flex items-center gap-3 px-3 py-2.5 hover:bg-neutral-50 dark:hover:bg-white/5 rounded-xl transition-all group"
+                      >
+                        <TypeIcon className="w-4 h-4 text-neutral-400 group-hover:text-primary" />
+                        <div className="flex flex-col items-start translate-y-[-1px]">
+                          <span className="text-xs font-bold text-neutral-900 dark:text-white leading-none mb-0.5">Transcripts Only</span>
+                          <span className="text-[9px] text-neutral-500 uppercase tracking-tighter">Read response</span>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setVoiceModeInSession("voice-only");
+                          startLiveSession();
+                          setShowVoiceOptions(false);
+                        }}
+                        className="flex items-center gap-3 px-3 py-2.5 hover:bg-neutral-50 dark:hover:bg-white/5 rounded-xl transition-all group"
+                      >
+                        <Waves className="w-4 h-4 text-neutral-400 group-hover:text-primary" />
+                        <div className="flex flex-col items-start translate-y-[-1px]">
+                          <span className="text-xs font-bold text-neutral-900 dark:text-white leading-none mb-0.5">Voice Only</span>
+                          <span className="text-[9px] text-neutral-500 uppercase tracking-tighter">Listen only</span>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setVoiceModeInSession("both");
+                          startLiveSession();
+                          setShowVoiceOptions(false);
+                        }}
+                        className="flex items-center gap-3 px-3 py-2.5 bg-primary/5 border border-primary/10 rounded-xl transition-all group"
+                      >
+                        <Headphones className="w-4 h-4 text-primary" />
+                        <div className="flex flex-col items-start translate-y-[-1px]">
+                          <span className="text-xs font-bold text-primary leading-none mb-0.5">Both (Simul)</span>
+                          <span className="text-[9px] text-primary/70 uppercase tracking-tighter">Full immersion</span>
+                        </div>
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              
+              {isLive && (
+                <button 
+                  onClick={stopLiveSession}
+                  className="absolute inset-0 z-20 flex items-center justify-center bg-red-500 text-white rounded-2xl"
+                >
+                  <Square className="w-4 h-4 fill-current" />
+                </button>
               )}
-              <div className="relative z-10">
-                {isConnecting ? <Loader2 className="w-5 h-5 animate-spin" /> : isLive ? <Square className="w-5 h-5 fill-current" /> : <Mic className={cn("w-5 h-5", activeVideoPlayer && "w-4 h-4")} />}
-              </div>
-            </button>
+            </div>
           )}
         </div>
       </div>

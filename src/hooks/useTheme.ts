@@ -14,18 +14,23 @@ export function useTheme() {
       const body = window.document.body;
       
       const isDark = t === 'dark' || (t === 'system' && mediaQuery.matches);
-      const themeClass = isDark ? 'dark' : 'light';
       
       root.classList.remove('light', 'dark');
       body.classList.remove('light', 'dark');
-      root.classList.add(themeClass);
-      body.classList.add(themeClass);
+      
+      if (isDark) {
+        root.classList.add('dark');
+        body.classList.add('dark');
+      } else {
+        root.classList.add('light');
+        body.classList.add('light');
+      }
       
       // Strict pure black background for dark mode on body
       if (isDark) {
         body.style.backgroundColor = '#000000';
       } else {
-        body.style.backgroundColor = '#f8f9fa';
+        body.style.backgroundColor = ''; // Remove inline style for light mode
       }
       
       // Update theme-color meta tag for mobile status bar

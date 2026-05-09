@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="theme-color" content="#FF6719" />
+    <meta name="theme-color" content="#ffffff" />
     
     <!-- Primary Meta Tags -->
     <title>Brandable | The Ultimate AI-Powered Content & Brand OS</title>
@@ -41,8 +41,10 @@
           
           if (isDark) {
             root.classList.add('dark');
+            root.classList.remove('light');
             root.style.backgroundColor = '#000000';
           } else {
+            root.classList.add('light');
             root.classList.remove('dark');
             root.style.backgroundColor = '#f8f9fa';
           }

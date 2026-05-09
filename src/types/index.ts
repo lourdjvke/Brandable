@@ -52,6 +52,18 @@ export interface ChatMessage {
   isSilent?: boolean;
 }
 
+export interface KnowledgeFile {
+  id: string;
+  name: string;
+  content: string;
+  type: "md" | "txt";
+  label: string;
+  isActive: boolean;
+  createdAt: number;
+}
+
+export type VoiceMode = "text-only" | "voice-only" | "both";
+
 export interface ChatSession {
   id: string;
   ownerId: string;
@@ -59,6 +71,8 @@ export interface ChatSession {
   createdAt: number;
   updatedAt: number;
   messages: ChatMessage[];
+  knowledgeFiles?: KnowledgeFile[];
+  voiceMode?: VoiceMode;
 }
 
 export const TAG_COLORS = [
